@@ -15,6 +15,8 @@ import yaml
 from presidio_analyzer import (
     AnalyzerEngine,
     EntityRecognizer,
+    PatternRecognizer,
+    Pattern,
     RecognizerRegistry,
     RecognizerResult,
 )
@@ -75,9 +77,8 @@ def _load_legal_forms() -> list:
                         forms.append(name)
     except Exception:
         pass
-    # Fallback
     if not forms:
-        forms = ["sp. z o.o.", "s.a.", "spólka akcyjna", "spółka z o.o.", "sp. k."]
+        forms = ["sp. z o.o.", "s.a.", "spółka akcyjna", "sp. k."]
     return forms
 
 
@@ -130,7 +131,7 @@ def _has_context_near(text: str, pos: int, keywords: list, window_chars: int = 1
 # 1. Recognizer NIP
 # ---------------------------------------------------------------------------
 class NipRecognizer(EntityRecognizer):
-    _PATTERN = re.compile(r"\b(\d[\s-]?\d[\s-]?\d[\s-]?\d[\s-]?\d[\s-]?\d[\s-]?\d[\s-]?\d[\s-]?\d[\s-]?\d)\b")
+    _PATTERN = re.compile(r"\b(\d[\s\r\n-]?\d[\s\r\n-]?\d[\s\r\n-]?\d[\s\r\n-]?\d[\s\r\n-]?\d[\s\r\n-]?\d[\s\r\n-]?\d[\s\r\n-]?\d[\s\r\n-]?\d)\b")
     _CONTEXT = ["nip", "n.i.p.", "numer identyfikacji podatkowej"]
 
     def __init__(self):
@@ -140,10 +141,9 @@ class NipRecognizer(EntityRecognizer):
         results = []
         for m in self._PATTERN.finditer(text):
             raw = m.group(1)
-            digits = re.sub(r"[\s-]", "", raw)
+            digits = re.sub(r"[\s\r\n-]", "", raw)
             if len(digits) != 10 or not validate_nip(digits):
                 continue
-            # NIP zazwyczaj wymaga choćby minimalnego kontekstu podatkowego
             if _has_context_near(text, m.start(), self._CONTEXT, window_chars=200):
                 results.append(RecognizerResult("PL_NIP", m.start(), m.end(), 0.99))
         return results
@@ -186,6 +186,9 @@ class KrsRecognizer(EntityRecognizer):
             raw = m.group(1)
             if not _has_context_near(text, m.start(), self._CONTEXT, window_chars=300):
                 continue
+            # NIP również ma 10 cyfr.
+            if validate_nip(raw):
+                continue
             results.append(RecognizerResult("PL_KRS", m.start(), m.end(), 0.98))
         return results
 
@@ -215,9 +218,9 @@ class PeselRecognizer(EntityRecognizer):
 # 5. Recognizer IBAN / NRB
 # ---------------------------------------------------------------------------
 class IbanRecognizer(EntityRecognizer):
-    _PATTERN_PL = re.compile(r"\bPL\s*\d{2}[\s]?(?:\d{4}[\s]?){6}\b", re.IGNORECASE)
-    _PATTERN_NRB = re.compile(r"\b(\d{2}[\s]?(?:\d{4}[\s]?){6})\b")
-    _CONTEXT = ["rachunek", "konto", "iban", "nrb", "przelew", "nr konta"]
+    _PATTERN_PL = re.compile(r"\bPL[\s\r\n]*\d{2}[\s\r\n]?(?:\d{4}[\s\r\n]?){6}\b", re.IGNORECASE)
+    _PATTERN_NRB = re.compile(r"\b(\d{2}[\s\r\n]?(?:\d{4}[\s\r\n]?){6})\b")
+    _CONTEXT = ["rachunek", "konto", "iban", "nrb", "przelew", "nr konta", "wypłaty"]
 
     def __init__(self):
         super().__init__(supported_entities=["BANK_ACCOUNT"], supported_language="pl", name="IbanRecognizer")
@@ -226,12 +229,12 @@ class IbanRecognizer(EntityRecognizer):
         results = []
         # IBAN z PL
         for m in self._PATTERN_PL.finditer(text):
-            raw = m.group(0).upper().replace(" ", "")
+            raw = re.sub(r'[\s\r\n]', '', m.group(0)).upper()
             if validate_iban(raw):
                 results.append(RecognizerResult("BANK_ACCOUNT", m.start(), m.end(), 1.00))
         # NRB bez PL
         for m in self._PATTERN_NRB.finditer(text):
-            raw = m.group(1).replace(" ", "")
+            raw = re.sub(r'[\s\r\n]', '', m.group(1))
             if len(raw) == 26 and validate_iban(raw):
                 score = 0.99 if _has_context_near(text, m.start(), self._CONTEXT, 155) else 0.60
                 results.append(RecognizerResult("BANK_ACCOUNT", m.start(), m.end(), score))
@@ -242,7 +245,7 @@ class IbanRecognizer(EntityRecognizer):
 # 6. Recognizer Telefon
 # ---------------------------------------------------------------------------
 class PhoneRecognizer(EntityRecognizer):
-    _PATTERN_INTL = re.compile(r"\+48[\s.-]?(?:\d[\s().-]?){9}")
+    _PATTERN_INTL = re.compile(r"\+48[\s\r\n.-]?(?:\d[\s\r\n().-]?){9}")
     _PATTERN_LOCAL = re.compile(r"(?<!\d)(\d{3}[\s.-]?\d{3}[\s.-]?\d{3})(?!\d)")
     _CONTEXT = ["tel", "telefon", "kom.", "komórka", "kontakt", "fax", "mobile", "tel."]
 
@@ -254,6 +257,10 @@ class PhoneRecognizer(EntityRecognizer):
         for m in self._PATTERN_INTL.finditer(text):
             results.append(RecognizerResult("PHONE_NUMBER", m.start(), m.end(), 0.95))
         for m in self._PATTERN_LOCAL.finditer(text):
+            raw_digits = re.sub(r"[\s.-]", "", m.group(1))
+            # Nie pozwalamy na false positives z NIP/REGON
+            if validate_nip(raw_digits) or validate_regon(raw_digits) or validate_pesel(raw_digits):
+                continue
             if _has_context_near(text, m.start(), self._CONTEXT, 120):
                 results.append(RecognizerResult("PHONE_NUMBER", m.start(), m.end(), 0.85))
         return results
@@ -263,12 +270,8 @@ class PhoneRecognizer(EntityRecognizer):
 # 7. Recognizer Dowodów i Paszportów
 # ---------------------------------------------------------------------------
 class IdentityDocumentsRecognizer(EntityRecognizer):
-    # Dowód osobisty: 3 litery + 6 cyfr
-    _PATTERN_ID = re.compile(r"(?<![A-Z0-9])([A-Z]{3}\s?\d{6})(?![A-Z0-9])", re.IGNORECASE)
-    # Paszport: 2 litery + 7 cyfr
-    _PATTERN_PASSPORT = re.compile(r"(?<![A-Z0-9])([A-Z]{2}\s?\d{7})(?![A-Z0-9])", re.IGNORECASE)
-
-    _CONTEXT_ID = ["dowód", "dowodu", "tożsamości", "seria", "numer dowodu", "id card"]
+    _PATTERN_ID = re.compile(r"(?<![A-Z0-9])([A-Z]{3}[\s\r\n]*\d{6})(?![A-Z0-9])")
+    _PATTERN_PASSPORT = re.compile(r"(?<![A-Z0-9])([A-Z]{2}[\s\r\n]*\d{7})(?![A-Z0-9])")
     _CONTEXT_PASSPORT = ["paszport", "paszportu", "nr paszportu", "seria i numer"]
 
     def __init__(self):
@@ -280,16 +283,11 @@ class IdentityDocumentsRecognizer(EntityRecognizer):
 
     def analyze(self, text: str, entities: List[str], nlp_artifacts=None):
         results = []
-        # Dowód osobisty
         for m in self._PATTERN_ID.finditer(text):
-            raw = m.group(1)
-            clean = raw.replace(" ", "")
+            clean = re.sub(r"[\s\r\n]", "", m.group(1))
             if validate_id_card(clean):
                 results.append(RecognizerResult("PL_ID_CARD", m.start(1), m.end(1), 0.99))
-        # Paszport
         for m in self._PATTERN_PASSPORT.finditer(text):
-            raw = m.group(1)
-            # Paszport wymaga kontekstu, by nie było False Positives (np. kody, oznaczenia)
             if _has_context_near(text, m.start(1), self._CONTEXT_PASSPORT, 150):
                 results.append(RecognizerResult("PL_PASSPORT", m.start(1), m.end(1), 0.90))
             else:
@@ -301,8 +299,8 @@ class IdentityDocumentsRecognizer(EntityRecognizer):
 # 8. Recognizer Tablic Rejestracyjnych
 # ---------------------------------------------------------------------------
 class LicensePlateRecognizer(EntityRecognizer):
-    # Wzorzec ogólny tablicy: 2-3 litery + 4-5 cyfr/liter
-    _PATTERN = re.compile(r"(?<![A-Z0-9])([A-Z]{2,3})[ -]?([A-Z0-9]{4,5})(?![A-Z0-9])", re.IGNORECASE)
+    # OSTRZEJSZY WZORZEC: litery MUSZĄ być WIELKIE
+    _PATTERN = re.compile(r"(?<![A-Z0-9])([A-Z]{2,3})[ -]?([A-Z0-9]{4,5})(?![A-Z0-9])")
     _CONTEXT = ["nr rejestracyjny", "nr rej.", "rejestracja", "pojazd", "samochód", "tablica"]
 
     def __init__(self):
@@ -315,14 +313,13 @@ class LicensePlateRecognizer(EntityRecognizer):
             prefix = m.group(1).upper()
             if prefix not in self.prefixes:
                 continue
-            # Sprawdzenie obecności kontekstu
             score = 0.90 if _has_context_near(text, m.start(), self._CONTEXT, 150) else 0.60
             results.append(RecognizerResult("LICENSE_PLATE", m.start(), m.end(), score))
         return results
 
 
 # ---------------------------------------------------------------------------
-# 9. Recognizer Polis i Szkód (Reguły dynamiczne z plików YML/YAML)
+# 9. Recognizer Polis i Szkód (Reguły dynamiczne)
 # ---------------------------------------------------------------------------
 class PolicyClaimRecognizer(EntityRecognizer):
     def __init__(self):
@@ -336,22 +333,16 @@ class PolicyClaimRecognizer(EntityRecognizer):
 
     def analyze(self, text: str, entities: List[str], nlp_artifacts=None):
         results = []
-        # Polisa
         for compiled_re in self.policy_rules:
             for m in compiled_re.finditer(text):
-                # Jeśli we wzorcu jest grupa przechwytująca (szukany numer),
-                # to redagujemy tylko ten numer, a nie całą etykietę.
-                if compiled_re.groups >= 1:
-                    results.append(RecognizerResult("POLICY_NUMBER", m.start(1), m.end(1), 0.90))
-                else:
-                    results.append(RecognizerResult("POLICY_NUMBER", m.start(), m.end(), 0.90))
-        # Szkoda
+                gstart = m.start(1) if compiled_re.groups >= 1 else m.start()
+                gend = m.end(1) if compiled_re.groups >= 1 else m.end()
+                results.append(RecognizerResult("POLICY_NUMBER", gstart, gend, 0.90))
         for compiled_re in self.claim_rules:
             for m in compiled_re.finditer(text):
-                if compiled_re.groups >= 1:
-                    results.append(RecognizerResult("CLAIM_NUMBER", m.start(1), m.end(1), 0.90))
-                else:
-                    results.append(RecognizerResult("CLAIM_NUMBER", m.start(), m.end(), 0.90))
+                gstart = m.start(1) if compiled_re.groups >= 1 else m.start()
+                gend = m.end(1) if compiled_re.groups >= 1 else m.end()
+                results.append(RecognizerResult("CLAIM_NUMBER", gstart, gend, 0.90))
         return results
 
 
@@ -363,20 +354,18 @@ class OrganizationRecognizer(EntityRecognizer):
         super().__init__(supported_entities=["ORGANIZATION"], supported_language="pl", name="OrganizationRecognizer")
         self.legal_forms = _load_legal_forms()
         sorted_forms = sorted(self.legal_forms, key=len, reverse=True)
-        # Zamieniamy zwykłą spację na \s+, aby obsłużyć złamania linii wewnątrz formy prawnej w PDF
-        escaped = [re.escape(f).replace(r"\ ", r"\s+") for f in sorted_forms]
-        escaped_forms = "|".join(escaped)
+        escaped_postfix = [re.escape(f).replace(r"\ ", r"[\s\n\r]+") for f in sorted_forms]
+        escaped_forms = "|".join(escaped_postfix)
+
+        # Regex: wyłapuje formę prawną na końcu nazwy (z obsługą łamania linii)
         self._form_pattern = re.compile(
-            f"([A-ZĄĆĘŁŃÓŚŹŻ0-9_\\-+&\\'\\\"\\s]{{2,100}})\\s+({escaped_forms})",
-            re.IGNORECASE,
-        ) if escaped else None
+            rf"([A-ZĄĆĘŁŃÓŚŹŻ0-9_\-+&\'\"„”][A-ZĄĆĘŁŃÓŚŹŻ0-9_\-+&\'\"„”a-ząćęłńóśźż\s\r\n]{{2,100}})[\s\n\r]+({escaped_forms})",
+            re.IGNORECASE | re.DOTALL,
+        )
 
     def analyze(self, text: str, entities: List[str], nlp_artifacts=None):
         results = []
-        if not self._form_pattern:
-            return results
         for m in self._form_pattern.finditer(text):
-            # Zwracamy caly zakres
             results.append(RecognizerResult("ORGANIZATION", m.start(), m.end(), 0.92))
         return results
 
@@ -385,32 +374,29 @@ class OrganizationRecognizer(EntityRecognizer):
 # 11. Recognizer Adresu
 # ---------------------------------------------------------------------------
 class AddressRecognizer(EntityRecognizer):
-    _PATTERN_POSTAL = re.compile(r"\b\d{2}-\d{3}\s+[A-ZĄĆĘŁŃÓŚŹŻ][A-Za-ząćęłńóśźż\s-]{2,30}\b")
+    _PATTERN_POSTAL = re.compile(r"\b\d{2}-\d{3}[\s\r\n]+[A-ZĄĆĘŁŃÓŚŹŻ][A-Za-ząćęłńóśźż\s-]{2,30}\b")
     # Kod pocztowy + nazwa ulicy z numerem budynku
     _PATTERN_STREET_PREF = re.compile(
-        r"\b(?:ul\.|al\.|plac|pl\.|os\.)\s+[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźżA-Z0-9\s.\-,\']{2,40}\s+\d+[a-zA-Z]?(?:[/\\]\d+)?\b",
+        r"\b(?:ul\.|al\.|plac|pl\.|os\.)[\s\r\n]+[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźżA-Z0-9\s.\-,\']{2,40}[\s\r\n]+\d+[a-zA-Z]?(?:[/\\]\d+)?\b",
         re.IGNORECASE
     )
     # Sama nazwa + numer (bez prefiksu), ale rygorystycznie: Wielka litera, słowo, numer.
     _PATTERN_STREET_NOPREF = re.compile(
         r"\b[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźżA-Z0-9\-]+[ \t]+\d+[a-zA-Z]?(?:[/\\]\d+)?\b"
     )
-    _CONTEXT = ["adres", "siedziba", "zamieszkały", "zamieszkania", "adres korespondencyjny", "miejsce", "w"]
+    _CONTEXT = ["adres", "siedziby", "zamieszkały", "zamieszkania"]
 
     def __init__(self):
         super().__init__(supported_entities=["ADDRESS"], supported_language="pl", name="AddressRecognizer")
 
     def analyze(self, text: str, entities: List[str], nlp_artifacts=None):
         results = []
-        # Ulica z prefiksem
         for m in self._PATTERN_STREET_PREF.finditer(text):
             score = 0.90 if _has_context_near(text, m.start(), self._CONTEXT, 150) else 0.70
             results.append(RecognizerResult("ADDRESS", m.start(), m.end(), score))
-        # Ulica bez prefiksu (ostrzejsza filtracja: MUSI być kontekst)
         for m in self._PATTERN_STREET_NOPREF.finditer(text):
             if _has_context_near(text, m.start(), self._CONTEXT, 60):
                 results.append(RecognizerResult("ADDRESS", m.start(), m.end(), 0.80))
-        # Kod pocztowy i miasto
         for m in self._PATTERN_POSTAL.finditer(text):
             score = 0.92 if _has_context_near(text, m.start(), self._CONTEXT, 200) else 0.70
             results.append(RecognizerResult("ADDRESS", m.start(), m.end(), score))
@@ -421,7 +407,7 @@ class AddressRecognizer(EntityRecognizer):
 # 12. Recognizer Email
 # ---------------------------------------------------------------------------
 class EmailRecognizer(EntityRecognizer):
-    _PATTERN = re.compile(r"(?i)(?<![\w.+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,63}(?![\w.-])")
+    _PATTERN = re.compile(r"(?i)(?<![\w.+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,63}")
 
     def __init__(self):
         super().__init__(supported_entities=["EMAIL_ADDRESS"], supported_language="pl", name="EmailRecognizer")
@@ -437,7 +423,7 @@ class EmailRecognizer(EntityRecognizer):
 # 13. Recognizer Osób
 # ---------------------------------------------------------------------------
 class PersonDictionaryRecognizer(EntityRecognizer):
-    _CANDIDATE = re.compile(r"\b([A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+(?:[ -][A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+){1,3})\b")
+    _CANDIDATE = re.compile(r"\b([A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+(?:[\s\r\n\-]+[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+){1,3})\b")
 
     def __init__(self):
         super().__init__(supported_entities=["PERSON"], supported_language="pl", name="PersonDictionaryRecognizer")
@@ -449,7 +435,7 @@ class PersonDictionaryRecognizer(EntityRecognizer):
         if not self.first_names or not self.surnames:
             return results
         for m in self._CANDIDATE.finditer(text):
-            parts = re.split(r"[ -]+", m.group(1))
+            parts = re.split(r"[\s\r\n\-]+", m.group(1))
             if parts[0].upper() not in self.first_names:
                 continue
             if parts[-1].upper() not in self.surnames:
@@ -519,17 +505,18 @@ class DeterministicAnalyzer:
         resolved = self._resolve_overlaps(sorted(filtered_results, key=lambda r: r.start))
         return resolved
 
-    @staticmethod
-    def _resolve_overlaps(results: List[RecognizerResult]) -> List[RecognizerResult]:
+    def _resolve_overlaps(self, results: List[RecognizerResult]) -> List[RecognizerResult]:
+        """Nadaje priorytety: NIP/REGON/KRS mają najwyższy, potem PESEL/ID, a na końcu Telefon/Adres/Osoba."""
+        priority = {
+            "PL_NIP": 10, "PL_REGON": 10, "PL_KRS": 10,
+            "PL_PESEL": 9, "PL_ID_CARD": 8, "PL_PASSPORT": 8,
+            "BANK_ACCOUNT": 7, "ORGANIZATION": 6, "ADDRESS": 5,
+            "PERSON": 4, "PHONE_NUMBER": 3, "EMAIL_ADDRESS": 2,
+            "LICENSE_PLATE": 1, "POLICY_NUMBER": 1, "CLAIM_NUMBER": 1
+        }
+        sorted_res = sorted(results, key=lambda r: (priority.get(r.entity_type, 0), r.end - r.start), reverse=True)
         final = []
-        for r in results:
-            if not final:
+        for r in sorted_res:
+            if not any(max(r.start, f.start) < min(r.end, f.end) for f in final):
                 final.append(r)
-                continue
-            prev = final[-1]
-            if r.start < prev.end:
-                if r.score > prev.score or (r.score == prev.score and (r.end - r.start) > (prev.end - prev.start)):
-                    final[-1] = r
-            else:
-                final.append(r)
-        return final
+        return sorted(final, key=lambda r: r.start)
