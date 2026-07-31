@@ -19,9 +19,10 @@
                             <th>Typ danych</th>
                             <th>Proponowany znacznik</th>
                             <th>Siła reguły</th>
-                            <th>Powód wykrycia</th>
-                            <th>Liczba wystąpień</th>
+                            <th>Powód wykr.</th>
+                            <th>Liczba wyst.</th>
                             <th>Anonimizuj</th>
+                            <th>Akcje</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -33,10 +34,23 @@
                             <td>{{ finding.reason }}</td>
                             <td>{{ finding.count }}</td>
                             <td><input type="checkbox" name="anonymize" value="{{ finding.id }}" checked></td>
+                            <td>
+                                <button type="button" class="btn btn-secondary btn-sm"
+                                        onclick="showPreview({{ finding.page }})">Pokaż</button>
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Modal podglądu -->
+            <div id="preview-modal" class="modal">
+                <div class="modal-content">
+                    <span class="close" onclick="closePreview()">&times;</span>
+                    <h2>Podgląd wykrycia</h2>
+                    <img id="preview-image" src="" alt="Podgląd strony">
+                </div>
             </div>
 
             <div class="actions">

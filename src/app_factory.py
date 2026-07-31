@@ -168,12 +168,11 @@ def _register_routes(app: Flask) -> None:
     def _get_findings_for_file(file_bytes: bytes, filename: str) -> list[dict]:
         """Ekstrahuje findings z pliku i grupuje je."""
         if filename.lower().endswith(".pdf"):
-            text = pdf_adapter.get_full_text(file_bytes)
+            raw_findings = anonymizer_service.analyze_pdf(file_bytes)
         else:
             # MVP obsłuży inne formaty później, teraz fallback na tekst
             text = file_bytes.decode("utf-8", errors="ignore")
-
-        raw_findings = anonymizer_service.analyze_text(text)
+            raw_findings = anonymizer_service.analyze_text(text)
 
         # Grupowanie unikalnych znalezisk po (typ, wartosc)
         # Aby kazda unikalna wartosc miala jeden wiersz w tabeli i jeden licznik
@@ -187,6 +186,8 @@ def _register_routes(app: Flask) -> None:
                     "score": f["score"],
                     "reason": f["reason"],
                     "raw_value": f["raw_value"],
+                    "page": f.get("page", 0),
+                    "bbox": f.get("bbox", None),
                     "count": 0
                 }
             grouped[key]["count"] += 1
@@ -260,6 +261,56 @@ def _register_routes(app: Flask) -> None:
             )
         except Exception as exc:
             return jsonify({"error": f"Blad podczas anonimizacji: {str(exc)}"}), 500
+
+    @app.route("/preview_page", methods=["POST"])
+    def preview_page():
+        """Renderuje podglad strony PDF z zaznaczonymi znaleziskami."""
+        if "file" not in request.files or "page" not in request.form:
+            return jsonify({"error": "Brak danych"}), 400
+
+        file = request.files["file"]
+        page_num = int(request.form.get("page", 0))
+
+        # Pobieramy listy aktywnych i podswietlonych ID z żądania
+        active_ids_raw = request.form.get("active_ids", "[]")
+        highlight_id = request.form.get("highlight_id", "")
+
+        try:
+            active_ids = json.loads(active_ids_raw)
+        except Exception:
+            active_ids = []
+
+        file_bytes = file.read()
+
+        import traceback
+        try:
+            # Ponowna analiza aby miec findings z bboxami
+            findings = anonymizer_service.analyze_pdf(file_bytes)
+
+            # Rejestrujemy powiazanie ID z kluczem (entity_type, raw_value)
+            # Uzyskujemy ujednolicone ID poprzez wywolanie _get_findings_for_file
+            grouped_findings = _get_findings_for_file(file_bytes, file.filename)
+            id_to_key = {}
+            for gf in grouped_findings:
+                id_to_key[gf["id"]] = (gf["entity_type"], gf["raw_value"])
+
+            # Budujemy zestawy aktywnych i wybranego klucza
+            active_keys = set(id_to_key[aid] for aid in active_ids if aid in id_to_key)
+            highlight_key = id_to_key.get(highlight_id, None)
+
+            # Renderowanie z filtrami kolorow i aktywnosci
+            png_bytes = pdf_adapter.get_page_preview(
+                file_bytes,
+                page_num,
+                findings,
+                active_keys=active_keys,
+                highlight_key=highlight_key
+            )
+
+            return send_file(io.BytesIO(png_bytes), mimetype="image/png")
+        except Exception:
+            traceback.print_exc()
+            return jsonify({"error": "Błąd serwera - sprawdź konsolę"}), 500
 
 
 # ---------------------------------------------------------------------------

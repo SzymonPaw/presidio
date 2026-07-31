@@ -27,6 +27,17 @@
         <div id="result" class="result"></div>
     </div>
 
+    <!-- Modal podglądu -->
+    <div id="preview-modal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <h2>Podgląd dokumentu (strona <span id="preview-page-num">0</span>)</h2>
+            <div class="modal-body">
+                <img id="preview-image" src="" alt="Podgląd strony PDF">
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

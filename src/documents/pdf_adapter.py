@@ -1,21 +1,14 @@
 import io
-from typing import List, Dict
+from typing import List, Dict, Any
 
 import fitz  # PyMuPDF
 
 
 class PdfAdapter:
-    """Adapter do analizy i anonimizacji dokumentow PDF z warstwa tekstowa.
-
-    Zgodnie z todo.md sekcja 10:
-    - Uzywamy PyMuPDF do lokalizacji i trwalej redakcji tekstu.
-    - Nie zaslaniamy danych prostokątem bez usunięcia treści źródłowej.
-    - Po trwalej redakcji wstawiamy znacznik w miejsce usuniętej wartości.
-    - Zachowujemy liczbe stron, obrazy, formularze i geometrie dokumentu.
-    """
+    """Adapter do analizy i anonimizacji dokumentow PDF z warstwa tekstowa."""
 
     def get_full_text(self, pdf_bytes: bytes) -> str:
-        """Zwraca pelny tekst PDF jako jeden ciag znakow (do analizy)."""
+        """Zwraca pelny tekst PDF(do analizy)."""
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         parts = []
         for page in doc:
@@ -23,24 +16,40 @@ class PdfAdapter:
         doc.close()
         return "\n".join(parts)
 
+    def get_page_preview(self, pdf_bytes: bytes, page_num: int, findings: List[Dict[str, Any]], active_keys: set = None, highlight_key: tuple = None) -> bytes:
+        """Renderuje stronę PDF do obrazka PNG z naniesionymi ramkami."""
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        if page_num < 0 or page_num >= doc.page_count:
+            doc.close()
+            return b""
+
+        page = doc[page_num]
+
+        # Rysujemy ramki bezpośrednio na stronie PDF przed wyrenderowaniem do pixmapy
+        for f in findings:
+            if f.get("page") == page_num and f.get("bbox"):
+                rect = fitz.Rect(f["bbox"])
+                key = (f["entity_type"], f["raw_value"])
+
+                if highlight_key and key == highlight_key:
+                    # Podświetlenie wybranego elementu na NIEBIESKO (grubsza linia)
+                    page.draw_rect(rect, color=(0, 0.4, 1), width=3, fill=(0, 0.4, 1), fill_opacity=0.35)
+                elif active_keys is None or key in active_keys:
+                    # Rysowanie aktywnego elementu na CZERWONO
+                    page.draw_rect(rect, color=(1, 0, 0), width=2, fill=(1, 0, 0), fill_opacity=0.2)
+
+        # Renderyzacja - zoom 2x dla lepszej czytelności
+        mat = fitz.Matrix(2, 2)
+        pix = page.get_pixmap(matrix=mat)
+
+        img_data = pix.tobytes("png")
+        doc.close()
+        return img_data
+
     def anonymize(self, pdf_bytes: bytes, findings: List[Dict]) -> bytes:
-        """Trwale redaguje PDF i wstawia znaczniki w miejsce wykrytych danych.
-
-        Dla kazdego finding:
-          1. Wyszukaj wszystkie wystapienia raw_value na kazdej stronie.
-          2. Dodaj adnotacje redakcji (add_redact_annot) z tekstem znacznika.
-          3. Wywolaj apply_redactions() - fisica usuwa tekst i wstawia znacznik.
-
-        Args:
-            pdf_bytes: Bajty oryginalnego pliku PDF.
-            findings:  Lista slownikow [{raw_value, marker, ...}, ...].
-
-        Returns:
-            Bajty zmodyfikowanego pliku PDF.
-        """
+        """Trwale redaguje PDF i wstawia znanczniki."""
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
 
-        # Zbierz unikalne pary (wartosc_do_usuniecia -> znacznik)
         replacements: dict[str, str] = {}
         for f in findings:
             raw = f.get("raw_value", "").strip()
@@ -49,7 +58,6 @@ class PdfAdapter:
                 replacements[raw] = marker
 
         if not replacements:
-            # Nic do zamiany - zwroc oryginal
             buf = io.BytesIO()
             doc.save(buf)
             doc.close()
@@ -58,22 +66,17 @@ class PdfAdapter:
 
         for page in doc:
             for raw_value, marker in replacements.items():
-                hits = page.search_for(raw_value, quads=False)
+                hits = page.search_for(raw_value)
                 for rect in hits:
-                    # Wyznacz rozmiar fontu dopasowany do wysokosci obiektu
-                    font_size = max(4.0, rect.height * 0.75)
-
-                    # add_redact_annot: usuwa oryginalny tekst i opcjonalnie wstawia text
                     page.add_redact_annot(
                         quad=rect,
                         text=marker,
                         fontname="Helv",
-                        fontsize=font_size,
+                        fontsize=max(4.0, rect.height * 0.75),
                         align=fitz.TEXT_ALIGN_LEFT,
-                        fill=(1, 1, 1),       # biale tlo (zamiast czarnego prostokatu)
-                        text_color=(0, 0, 0), # czarny tekst znacznika
+                        fill=(1, 1, 1),
+                        text_color=(0, 0, 0),
                     )
-            # Zastosuj wszystkie redakcje na tej stronie jednorazowo
             page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
 
         buf = io.BytesIO()
