@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <title>Anonimizator dokumentów</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Anonimizator dokumentów</h1>
+        <p class="subtitle">Lokalne narzędzie do anonimizacji danych w dokumentach</p>
+
+        <form id="upload-form" class="upload-form">
+            <label for="file-input" class="file-label">
+                <span>Wybierz plik lub przeciągnij tutaj</span>
+                <input type="file" id="file-input" name="file" class="file-input" hidden>
+            </label>
+            <div id="file-info" class="file-info"></div>
+            <button type="submit" id="analyze-btn" class="btn btn-primary" disabled>Analizuj</button>
+        </form>
+
+        <div id="status" class="status"></div>
+        <div id="findings" class="findings"></div>
+        <div id="result" class="result"></div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

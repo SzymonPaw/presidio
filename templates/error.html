@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Błąd - Anonimizator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+    <div class="container error-container">
+        <h1>Wystąpił błąd</h1>
+        <div class="error-message">
+            <p>{{ error_message }}</p>
+        </div>
+        <div class="actions">
+            <a href="/" class="btn btn-primary">Powrót do strony głównej</a>
+        </div>
+    </div>
+</body>
+</html>

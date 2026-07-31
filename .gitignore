@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+instance/*.sqlite3
+data/reports/*.csv
+config/recognizers/first_names.csv
+config/recognizers/surnames.csv
+config/recognizers/localities.txt
+.env

@@ -1,0 +1,9 @@
+legal_forms:
+  - names: ["spółka jawna", "sp. j.", "sp.j.", "sp j"]
+  - names: ["spółka partnerska", "sp. p.", "sp.p.", "sp p"]
+  - names: ["spółka komandytowa", "sp. k.", "sp.k.", "sp k"]
+  - names: ["spółka komandytowo-akcyjna", "S.K.A.", "S.K.A", "SKA", "sp.k.a."]
+  - names: ["spółka z ograniczoną odpowiedzialnością", "sp. z o.o.", "sp. z o.o", "sp z o.o.", "sp z oo"]
+  - names: ["prosta spółka akcyjna", "P.S.A.", "P.S.A", "PSA"]
+  - names: ["spółka akcyjna", "S.A.", "S.A", "SA"]
+  - names: ["fundacja", "stowarzyszenie", "TUW", "TUiR"]

@@ -1,0 +1,28 @@
+window_size_words: 12
+window_size_chars: 100
+
+person:
+  strong: ["imię", "nazwisko", "imię i nazwisko", "ubezpieczony", "ubezpieczająca", "poszkodowany", "pełnomocnik", "reprezentowany przez", "osoba kontaktowa", "pracownik", "kierowca", "właściciel", "podpis"]
+
+organization:
+  strong: ["firma", "nazwa firmy", "ubezpieczyciel", "kontrahent", "sprzedawca", "nabywca"]
+  weak: ["nazwa", "spółka"]
+
+address:
+  strong: ["adres", "zamieszkały", "siedziba", "adres korespondencyjny", "miejsce zdarzenia"]
+  location_strong: ["miejscowość", "miejsce zdarzenia", "lokalizacja", "województwo"]
+
+phone:
+  strong: ["tel", "telefon", "kom.", "kontakt", "fax"]
+
+bank_account:
+  strong: ["rachunek", "konto", "iban", "nrb", "przelew"]
+
+license_plate:
+  strong: ["nr rejestracyjny", "nr rej.", "rejestracja", "pojazd", "samochód", "tablica"]
+
+passport:
+  strong: ["paszport", "nr paszportu", "dokument paszportowy", "seria i numer"]
+
+krs:
+  strong: ["krs", "krajowy rejestr sądowy"]

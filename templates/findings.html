@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wyniki analizy - Anonimizator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Wyniki analizy</h1>
+        <p>Poniżej znajdują się wykryte dane. Odznacz pozycje, które nie powinny być anonimizowane, a następnie zatwierdź.</p>
+
+        <form id="findings-form" method="post">
+            <div class="findings-table-wrapper">
+                <table class="findings-table">
+                    <thead>
+                        <tr>
+                            <th>Typ danych</th>
+                            <th>Proponowany znacznik</th>
+                            <th>Siła reguły</th>
+                            <th>Powód wykrycia</th>
+                            <th>Liczba wystąpień</th>
+                            <th>Anonimizuj</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for finding in findings %}
+                        <tr>
+                            <td>{{ finding.entity_type }}</td>
+                            <td>{{ finding.marker }}</td>
+                            <td>{{ "%.2f"|format(finding.score) }}</td>
+                            <td>{{ finding.reason }}</td>
+                            <td>{{ finding.count }}</td>
+                            <td><input type="checkbox" name="anonymize" value="{{ finding.id }}" checked></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="actions">
+                <button type="submit" class="btn btn-primary">Zatwierdź i anonimizuj</button>
+                <a href="/" class="btn btn-secondary">Powrót</a>
+            </div>
+        </form>
+    </div>
+</body>
+</html>

@@ -1,0 +1,76 @@
+Masz zbudować lokalną aplikację internetową do anonimizacji dokumentów zgodnie z załączonymi plikami:
+
+* `todo.md`
+* `reguly_wykrywania.md`
+
+Traktuj oba pliki jako nadrzędną specyfikację projektu. Nie zmieniaj samodzielnie założeń, zakresu MVP ani architektury bez wyraźnej zgody użytkownika.
+
+Najważniejsze zasady:
+
+1. Aplikacja ma działać lokalnie na Windowsie.
+2. Nie używaj Dockera, WSL, modeli AI, modeli NLP, Transformers, zewnętrznych API ani usług chmurowych. Dopuszcza się instalację biblioteki spaCy wyłącznie jako technicznej zależności pakietu Presidio Analyzer. Nie wolno pobierać, instalować, konfigurować ani uruchamiać żadnego modelu spaCy ani używać spaCy do analizy językowej, tokenizacji, NER lub rozpoznawania danych.
+3. Wykrywanie danych ma być całkowicie deterministyczne i oparte na:
+
+   * wyrażeniach regularnych;
+   * sumach kontrolnych;
+   * lokalnych słownikach;
+   * słowach kontekstowych;
+   * regułach zapisanych w konfiguracji.
+4. Presidio może być używane wyłącznie jako framework do uruchamiania własnych recognizerów. Skonfiguruj oficjalny NoOpNlpEngine, nie ładuj domyślnych recognizerów zależnych od modeli i nie konfiguruj żadnego modelu językowego. Analizę słów kontekstowych wykonuj własnym, deterministycznym kodem działającym na surowym tekście oraz strukturze dokumentu.
+5. Dokumenty nie mogą być wysyłane poza komputer użytkownika.
+6. Aplikacja nie może trwale zapisywać przesłanych ani wynikowych dokumentów.
+7. Oryginalne dane mają być usuwane z dokumentu wynikowego i zastępowane znacznikami, np.:
+
+   * `[OSOBA_1]`
+   * `[FIRMA_1]`
+   * `[NIP_1]`
+8. Ten sam podmiot lub identyfikator ma otrzymywać ten sam znacznik w całej partii plików.
+9. Należy maksymalnie zachować oryginalny wygląd dokumentów. Nie przebudowuj całych plików z wyekstrahowanego tekstu. Modyfikuj wyłącznie niezbędne fragmenty tekstowe.
+10. Początkowo aplikacja ma obsługiwać jeden plik, ale architektura od początku musi umożliwiać obsługę wielu plików w ramach MVP.
+
+Rozpocznij od wykonania następujących czynności:
+
+1. Przeczytaj w całości oba załączone pliki.
+2. Sprawdź ich spójność i zgłoś wyłącznie rzeczywiste sprzeczności lub elementy niemożliwe technicznie.
+3. Utwórz strukturę katalogów projektu zgodną z `todo.md`.
+4. Przygotuj:
+
+   * `requirements.txt`;
+   * `.env.example`;
+   * `.gitignore`;
+   * konfigurację aplikacji;
+   * prosty plik startowy;
+   * skrypty `setup_windows.bat` i `run_windows.bat`;
+   * katalogi na słowniki źródłowe i generowane.
+5. Utwórz walidator, który przy uruchomieniu sprawdza obecność plików:
+
+   * `data/source/first_names_source.csv`
+   * `data/source/surnames_source.csv`
+   * `data/source/SIMC.csv`
+6. Jeżeli plików brakuje, aplikacja ma wyświetlić czytelny komunikat wskazujący dokładną nazwę i oczekiwaną lokalizację.
+7. Przygotuj skrypt `scripts/update_dictionaries.py`, który:
+
+   * rozpoznaje kolumny w dostarczonych plikach źródłowych;
+   * normalizuje dane;
+   * generuje docelowe słowniki;
+   * zapisuje je w UTF-8;
+   * raportuje liczbę poprawnie zaimportowanych rekordów;
+   * wykrywa rekordy zawierające podejrzane znaki zastępcze, w szczególności `?` oraz znak zastępczy Unicode ` `;
+   * nie próbuje automatycznie odgadywać ani poprawiać uszkodzonych wartości;
+   * pomija takie rekordy w słowniku wynikowym i zapisuje ich listę do raportu `data/reports/dictionary_rejections.csv`;
+   * raportuje liczbę rekordów odrzuconych oraz powód ich odrzucenia;
+   * poprawnie obsługuje jednokolumnowy plik `SIMC.csv`, również gdy nie występuje w nim jednoznaczny separator;
+   * nie kontynuuje po wykryciu niejednoznacznej struktury pliku.
+
+Na tym etapie nie implementuj jeszcze pełnej obsługi DOCX, XLSX ani PDF.
+
+Pierwszy etap ma zakończyć się działającym szkieletem aplikacji, poprawnym uruchomieniem lokalnym oraz przygotowaniem i walidacją słowników.
+
+Po zakończeniu:
+
+* pokaż utworzoną strukturę katalogów;
+* wypisz utworzone pliki;
+* opisz krótko sposób uruchomienia;
+* wskaż, które elementy z `todo.md` zostały wykonane;
+* nie oznaczaj jako wykonanych elementów, których faktycznie nie zaimplementowałeś;
+* nie dodawaj funkcji spoza specyfikacji.
