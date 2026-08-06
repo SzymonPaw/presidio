@@ -3,7 +3,9 @@
 ## 0. Cel i zakres MVP
 
 * [x] Zbudować lokalną aplikację webową do wykrywania i anonimizacji danych w dokumentach.
-* [x] MVP obsługuje wyłącznie: `.docx`, `.xlsx` oraz PDF z warstwą tekstową.
+* [ ] MVP obsługuje: `.docx`
+* [ ] MVP obsługuje: `.xlsx`
+* [x] MVP obsługuje: PDF z warstwą tekstową.
 * [ ] Kolejne etapy: starsze formaty Word/Excel, następnie skany PDF z OCR.
 * [x] Język podstawowy: polski.
 * [x] Brak logowania użytkowników w MVP.
