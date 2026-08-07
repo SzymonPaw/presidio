@@ -380,34 +380,346 @@ class OrganizationRecognizer(EntityRecognizer):
 # 11. Recognizer Adresu
 # ---------------------------------------------------------------------------
 class AddressRecognizer(EntityRecognizer):
-    _PATTERN_POSTAL = re.compile(r"\b\d{2}-\d{3}[\s\r\n]+[A-ZĄĆĘŁŃÓŚŹŻ][A-Za-ząćęłńóśźż\s-]{2,30}\b")
-    # Kod pocztowy + nazwa ulicy z numerem budynku
-    _PATTERN_STREET_PREF = re.compile(
-        r"\b(?:ul\.|al\.|plac|pl\.|os\.)[\s\r\n]+[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźżA-Z0-9\s.\-,\']{2,40}[\s\r\n]+\d+[a-zA-Z]?(?:[/\\]\d+)?\b",
-        re.IGNORECASE
+    """
+    Deterministyczny recognizer polskich adresów.
+
+    Najpierw wykrywa:
+    - ulicę / aleję / plac / osiedle z numerem,
+    - kod pocztowy i miejscowość,
+
+    a następnie łączy sąsiadujące elementy w jeden wynik ADDRESS.
+    Miejscowość musi występować w lokalnym localities.txt.
+    """
+
+    _WS = r"[ \t\r\n]+"
+
+    _PREFIX = (
+        r"(?:"
+        r"ul\.?"
+        r"|al\.?"
+        r"|aleja"
+        r"|aleje"
+        r"|pl\.?"
+        r"|plac"
+        r"|os\.?"
+        r"|osiedle"
+        r"|rondo"
+        r"|skwer"
+        r"|bulwar"
+        r")"
     )
-    # Sama nazwa + numer (bez prefiksu), ale rygorystycznie: Wielka litera, słowo, numer.
-    _PATTERN_STREET_NOPREF = re.compile(
-        r"\b[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźżA-Z0-9\-]+[ \t]+\d+[a-zA-Z]?(?:[/\\]\d+)?\b"
+
+    _WORD = (
+        r"[A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż]"
+        r"[A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż'’.-]*"
     )
-    _CONTEXT = ["adres", "siedziby", "zamieszkały", "zamieszkania"]
+
+    # Obsługuje m.in.:
+    # ul. 3 Maja
+    # ul. Jana Pawła II
+    # al. gen. Władysława Sikorskiego
+    _NUMERIC_NAME = (
+        rf"(?:"
+        rf"\d{{1,4}}"
+        rf"(?:-[A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż]+)?"
+        rf"{_WS}"
+        rf")?"
+    )
+
+    _STREET_NAME = (
+        rf"{_NUMERIC_NAME}"
+        rf"{_WORD}"
+        rf"(?:{_WS}{_WORD}){{0,7}}"
+    )
+
+    # 12, 12A, 12/4, 12A/4, 12-14
+    _BUILDING = (
+        r"\d{1,4}[A-Za-z]?"
+        r"(?:[-/]\d{1,4}[A-Za-z]?)?"
+    )
+
+    # m. 4, mieszkanie 4, lok. 2, lokal 2
+    _UNIT = (
+        rf"(?:"
+        rf"[ \t]*,?[ \t]*"
+        rf"(?:m(?:ieszkanie)?\.?|lok(?:al)?\.?)"
+        rf"{_WS}"
+        rf"\d{{1,4}}[A-Za-z]?"
+        rf")?"
+    )
+
+    _PATTERN_STREET = re.compile(
+        rf"(?<!\w)"
+        rf"(?P<street>"
+        rf"{_PREFIX}"
+        rf"{_WS}"
+        rf"{_STREET_NAME}"
+        rf"{_WS}"
+        rf"{_BUILDING}"
+        rf"{_UNIT}"
+        rf")"
+        rf"(?![\w/])",
+        re.IGNORECASE,
+    )
+
+    # Kandydat może obejmować kilka słów lub wierszy,
+    # ale dokładny koniec miejscowości zostanie ustalony
+    # na podstawie localities.txt.
+    _PATTERN_POSTAL_CANDIDATE = re.compile(
+        r"(?<!\d)"
+        r"(?P<postal>\d{2}-\d{3})"
+        r"[ \t\r\n]+"
+        r"(?P<city>"
+        r"[A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż]"
+        r"[A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż'’ \t\r\n-]{1,79}"
+        r")"
+    )
+
+    # Dozwolone znaki między ulicą a kodem pocztowym.
+    _JOINER = re.compile(
+        r"^[ \t\r\n,;]*"
+        r"(?:"
+        r"kod(?:[ \t]+pocztowy)?"
+        r"[ \t]*:?[ \t]*"
+        r")?"
+        r"$",
+        re.IGNORECASE,
+    )
+
+    _CONTEXT = [
+        "adres",
+        "adresem",
+        "zamieszkały",
+        "zamieszkania",
+        "zameldowania",
+        "siedziba",
+        "siedziby",
+        "adres korespondencyjny",
+        "miejsce zdarzenia",
+    ]
 
     def __init__(self):
-        super().__init__(supported_entities=["ADDRESS"], supported_language="pl", name="AddressRecognizer")
+        super().__init__(
+            supported_entities=["ADDRESS"],
+            supported_language="pl",
+            name="AddressRecognizer",
+        )
 
-    def analyze(self, text: str, entities: List[str], nlp_artifacts=None):
-        results = []
-        for m in self._PATTERN_STREET_PREF.finditer(text):
-            score = 0.90 if _has_context_near(text, m.start(), self._CONTEXT, 150) else 0.70
-            results.append(RecognizerResult("ADDRESS", m.start(), m.end(), score))
-        for m in self._PATTERN_STREET_NOPREF.finditer(text):
-            if _has_context_near(text, m.start(), self._CONTEXT, 60):
-                results.append(RecognizerResult("ADDRESS", m.start(), m.end(), 0.80))
-        for m in self._PATTERN_POSTAL.finditer(text):
-            score = 0.92 if _has_context_near(text, m.start(), self._CONTEXT, 200) else 0.70
-            results.append(RecognizerResult("ADDRESS", m.start(), m.end(), score))
-        return results
+        # _load_simple_txt zapisuje wartości wielkimi literami.
+        self.localities = _load_simple_txt("localities.txt")
 
+    @staticmethod
+    def _normalize_locality(value: str) -> str:
+        return re.sub(r"\s+", " ", value).strip(" ,;").upper()
+
+    def _longest_locality_prefix(self, candidate: str) -> str | None:
+        """
+        Z kandydata np.:
+            'Kraków\\njan'
+        wybiera:
+            'Kraków'
+
+        pod warunkiem, że wartość istnieje w localities.txt.
+        """
+        candidate = candidate.strip()
+
+        possible_ends = {len(candidate)}
+        possible_ends.update(
+            index
+            for index, character in enumerate(candidate)
+            if character.isspace()
+        )
+
+        for end in sorted(possible_ends, reverse=True):
+            prefix = candidate[:end].strip(" ,;")
+
+            if not prefix:
+                continue
+
+            normalized = self._normalize_locality(prefix)
+
+            if normalized in self.localities:
+                return prefix
+
+        return None
+
+    def _postal_spans(self, text: str) -> list[tuple[int, int]]:
+        spans: list[tuple[int, int]] = []
+
+        for match in self._PATTERN_POSTAL_CANDIDATE.finditer(text):
+            locality = self._longest_locality_prefix(
+                match.group("city")
+            )
+
+            if not locality:
+                continue
+
+            start = match.start("postal")
+            end = match.start("city") + len(locality)
+
+            spans.append((start, end))
+
+        return spans
+
+    def _can_join(
+        self,
+        text: str,
+        left_end: int,
+        right_start: int,
+    ) -> bool:
+        if right_start < left_end:
+            return False
+
+        gap = text[left_end:right_start]
+
+        # Adres może zostać podzielony przez przecinek,
+        # spacje lub pojedyncze przejście do nowego wiersza.
+        return (
+            len(gap) <= 40
+            and bool(self._JOINER.fullmatch(gap))
+        )
+
+    def analyze(
+        self,
+        text: str,
+        entities: List[str],
+        nlp_artifacts=None,
+    ):
+        street_spans = [
+            (
+                match.start("street"),
+                match.end("street"),
+            )
+            for match in self._PATTERN_STREET.finditer(text)
+        ]
+
+        postal_spans = self._postal_spans(text)
+
+        used_streets: set[int] = set()
+        used_postals: set[int] = set()
+
+        results: List[RecognizerResult] = []
+
+        # Najczęstszy układ:
+        # ul. Testowa 1, 00-001 Warszawa
+        for street_index, (
+            street_start,
+            street_end,
+        ) in enumerate(street_spans):
+            for postal_index, (
+                postal_start,
+                postal_end,
+            ) in enumerate(postal_spans):
+                if postal_index in used_postals:
+                    continue
+
+                if self._can_join(
+                    text,
+                    street_end,
+                    postal_start,
+                ):
+                    results.append(
+                        RecognizerResult(
+                            "ADDRESS",
+                            street_start,
+                            postal_end,
+                            0.97,
+                        )
+                    )
+
+                    used_streets.add(street_index)
+                    used_postals.add(postal_index)
+                    break
+
+        # Rzadziej spotykany układ:
+        # 00-001 Warszawa
+        # ul. Testowa 1
+        for postal_index, (
+            postal_start,
+            postal_end,
+        ) in enumerate(postal_spans):
+            if postal_index in used_postals:
+                continue
+
+            for street_index, (
+                street_start,
+                street_end,
+            ) in enumerate(street_spans):
+                if street_index in used_streets:
+                    continue
+
+                if self._can_join(
+                    text,
+                    postal_end,
+                    street_start,
+                ):
+                    results.append(
+                        RecognizerResult(
+                            "ADDRESS",
+                            postal_start,
+                            street_end,
+                            0.97,
+                        )
+                    )
+
+                    used_postals.add(postal_index)
+                    used_streets.add(street_index)
+                    break
+
+        # Sama ulica z numerem.
+        for index, (start, end) in enumerate(street_spans):
+            if index in used_streets:
+                continue
+
+            score = (
+                0.92
+                if _has_context_near(
+                    text,
+                    start,
+                    self._CONTEXT,
+                    180,
+                )
+                else 0.78
+            )
+
+            results.append(
+                RecognizerResult(
+                    "ADDRESS",
+                    start,
+                    end,
+                    score,
+                )
+            )
+
+        # Sam kod pocztowy i miejscowość.
+        for index, (start, end) in enumerate(postal_spans):
+            if index in used_postals:
+                continue
+
+            score = (
+                0.90
+                if _has_context_near(
+                    text,
+                    start,
+                    self._CONTEXT,
+                    220,
+                )
+                else 0.82
+            )
+
+            results.append(
+                RecognizerResult(
+                    "ADDRESS",
+                    start,
+                    end,
+                    score,
+                )
+            )
+
+        return sorted(
+            results,
+            key=lambda result: result.start,
+        )
 
 # ---------------------------------------------------------------------------
 # 12. Recognizer Email
@@ -514,11 +826,26 @@ class DeterministicAnalyzer:
     def _resolve_overlaps(self, results: List[RecognizerResult]) -> List[RecognizerResult]:
         """Nadaje priorytety: NIP/REGON/KRS mają najwyższy, potem PESEL/ID, a na końcu Telefon/Adres/Osoba."""
         priority = {
-            "PL_NIP": 10, "PL_REGON": 10, "PL_KRS": 10,
-            "PL_PESEL": 9, "PL_ID_CARD": 8, "PL_PASSPORT": 8,
-            "BANK_ACCOUNT": 7, "ORGANIZATION": 6, "ADDRESS": 5,
-            "PERSON": 4, "PHONE_NUMBER": 3, "EMAIL_ADDRESS": 2,
-            "LICENSE_PLATE": 1, "POLICY_NUMBER": 1, "CLAIM_NUMBER": 1
+            "PL_NIP": 100,
+            "PL_REGON": 100,
+            "PL_KRS": 100,
+
+            "PL_PESEL": 95,
+
+            "PL_ID_CARD": 90,
+            "PL_PASSPORT": 90,
+
+            "BANK_ACCOUNT": 85,
+            "EMAIL_ADDRESS": 80,
+            "PHONE_NUMBER": 75,
+
+            "LICENSE_PLATE": 70,
+            "POLICY_NUMBER": 70,
+            "CLAIM_NUMBER": 70,
+            "ADDRESS": 60,
+
+            "ORGANIZATION": 50,
+            "PERSON": 40,
         }
         sorted_res = sorted(results, key=lambda r: (priority.get(r.entity_type, 0), r.end - r.start), reverse=True)
         final = []
