@@ -246,7 +246,13 @@ class IbanRecognizer(EntityRecognizer):
 # ---------------------------------------------------------------------------
 class PhoneRecognizer(EntityRecognizer):
     _PATTERN_INTL = re.compile(r"\+48[\s\r\n.-]?(?:\d[\s\r\n().-]?){9}")
-    _PATTERN_LOCAL = re.compile(r"(?<!\d)(\d{3}[\s.-]?\d{3}[\s.-]?\d{3})(?!\d)")
+    _PATTERN_LOCAL = re.compile(
+        r"(?<!\d)("
+        r"\d{3}[\s.-]?\d{3}[\s.-]?\d{3}"
+        r"|"
+        r"\d{2}[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}"
+        r")(?!\d)"
+    )
     _CONTEXT = ["tel", "telefon", "kom.", "komórka", "kontakt", "fax", "mobile", "tel."]
 
     def __init__(self):
