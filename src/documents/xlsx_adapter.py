@@ -744,12 +744,19 @@ class XlsxAdapter:
         # Grupujemy findingi wedlug konkretnej komorki.
         # ----------------------------------------------------
 
-        grouped: Dict[
+                grouped: Dict[
             Tuple[str, str],
             List[Tuple[str, str]],
         ] = {}
 
-        for finding in findings:
+        def add_finding_target(
+            finding: Dict[str, Any],
+        ) -> None:
+            """
+            Dodaje jedno konkretne wystąpienie findingu
+            do listy komórek przeznaczonych do anonimizacji.
+            """
+
             raw_value = str(
                 finding.get(
                     "raw_value",
@@ -768,7 +775,7 @@ class XlsxAdapter:
                 not raw_value
                 or not marker
             ):
-                continue
+                return
 
             (
                 part_name,
@@ -781,7 +788,14 @@ class XlsxAdapter:
                 not part_name
                 or not cell_ref
             ):
-                continue
+                logger.warning(
+                    "Finding XLSX bez lokalizacji: %s",
+                    finding.get(
+                        "entity_type",
+                        "?",
+                    ),
+                )
+                return
 
             grouped.setdefault(
                 (
@@ -795,6 +809,58 @@ class XlsxAdapter:
                     marker,
                 )
             )
+
+        # ----------------------------------------------------
+        # Findings widoczne w UI są grupowane po:
+        #
+        #   entity_type + raw_value
+        #
+        # Jeden wiersz może więc odpowiadać kilku komórkom.
+        #
+        # app_factory przechowuje je w:
+        #
+        #   occurrences = [...]
+        # ----------------------------------------------------
+
+        for finding in findings:
+            occurrences = finding.get(
+                "occurrences"
+            )
+
+            if (
+                isinstance(
+                    occurrences,
+                    list,
+                )
+                and occurrences
+            ):
+                for occurrence in occurrences:
+                    if not isinstance(
+                        occurrence,
+                        dict,
+                    ):
+                        continue
+
+                    expanded = dict(
+                        finding
+                    )
+
+                    # Lokalizacja konkretnego wystąpienia
+                    # nadpisuje lokalizację pierwszego findingu.
+                    expanded.update(
+                        occurrence
+                    )
+
+                    add_finding_target(
+                        expanded
+                    )
+
+            else:
+                # Kompatybilność z findingami, które nie były
+                # grupowane.
+                add_finding_target(
+                    finding
+                )
 
         if not grouped:
             return xlsx_bytes

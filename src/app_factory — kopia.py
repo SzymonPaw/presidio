@@ -184,95 +184,24 @@ def _register_routes(app: Flask) -> None:
 
         # Grupowanie unikalnych znalezisk po (typ, wartosc)
         grouped: dict[tuple[str, str], dict] = {}
-
-        location_fields = (
-            # PDF
-            "page",
-            "bbox",
-
-            # XLSX
-            "location",
-            "xlsx_part",
-            "xlsx_cell",
-            "xlsx_storage",
-            "xlsx_shared_index",
-
-            # DOCX - zostawiamy również na przyszłość /
-            # dla obecnego adaptera Word.
-            "docx_part",
-            "docx_story",
-            "docx_paragraph",
-        )
-
         for f in raw_findings:
-            key = (
-                f["entity_type"],
-                f["raw_value"],
-            )
-
-            # Konkretne pojedyncze wystąpienie findingu.
-            occurrence = {}
-
-            for field in location_fields:
-                if (
-                    field in f
-                    and f[field] is not None
-                ):
-                    occurrence[field] = f[field]
-
+            key = (f["entity_type"], f["raw_value"])
             if key not in grouped:
                 grouped[key] = {
                     "entity_type": f["entity_type"],
                     "marker": f["marker"],
                     "score": f["score"],
-                    "reason": f.get(
-                        "reason",
-                        "Regula z silnika",
-                    ),
+                    "reason": f["reason"],
                     "raw_value": f["raw_value"],
-                    "count": 0,
-
-                    # Wszystkie miejsca wystąpienia tej samej
-                    # wartości.
-                    "occurrences": [],
+                    "page": f.get("page", 0),
+                    "bbox": f.get("bbox", None),
+                    "count": 0
                 }
-
-                # ----------------------------------------------------
-                # Backward compatibility.
-                #
-                # Zachowujemy również pierwszą lokalizację bezpośrednio
-                # w findingu. PDF preview oraz starszy kod mogą nadal
-                # z tego korzystać.
-                # ----------------------------------------------------
-
-                for field in location_fields:
-                    if (
-                        field in f
-                        and f[field] is not None
-                    ):
-                        grouped[key][field] = f[field]
-
             grouped[key]["count"] += 1
 
-            grouped[key]["occurrences"].append(
-                occurrence
-            )
-
-            # Jeżeli ta sama wartość została znaleziona z różnymi
-            # score, w tabeli pokazujemy najwyższy.
-            if (
-                f.get("score", 0)
-                > grouped[key].get("score", 0)
-            ):
-                grouped[key]["score"] = f["score"]
-
-        # Nadajemy identyfikatory.
+        # ... (reszta funkcji _get_findings_for_file pozostaje bez zmian)
         result = []
-
-        for idx, value in enumerate(
-            grouped.values(),
-            start=1,
-        ):
+        for idx, (key, value) in enumerate(grouped.items(), start=1):
             value["id"] = str(idx)
             result.append(value)
 
