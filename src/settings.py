@@ -56,10 +56,16 @@ REQUIRED_SOURCE_FILES = [
 ]
 
 # ---------------------------------------------------------------------------
-# Konfiguracja uploadu
+# Konfiguracja uploadu oraz limitów bezpieczeństwa ZIP/XML
 # ---------------------------------------------------------------------------
 MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50 MB
 MAX_FILES_PER_BATCH = 10
+
+# Limity ZIP bomb / bezpieczeństwa
+ZIP_MAX_ENTRIES = 500
+ZIP_MAX_DECOMPRESSED_PART = 30 * 1024 * 1024  # 30 MB
+ZIP_MAX_DECOMPRESSED_TOTAL = 150 * 1024 * 1024  # 150 MB
+ZIP_MAX_RATIO = 50  # Max 50x kompresji
 
 # ---------------------------------------------------------------------------
 # Inne ustawienia

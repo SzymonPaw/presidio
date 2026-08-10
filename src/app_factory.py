@@ -152,9 +152,13 @@ def _register_routes(app: Flask) -> None:
     from flask import render_template, send_file, request, jsonify
 
     from src.documents.pdf_adapter import PdfAdapter
+    from src.documents.docx_adapter import DocxAdapter
+    from src.documents.xlsx_adapter import XlsxAdapter
     from src.anonymization.service import AnonymizationService
 
     pdf_adapter = PdfAdapter()
+    docx_adapter = DocxAdapter()
+    xlsx_adapter = XlsxAdapter()
     anonymizer_service = AnonymizationService()
 
     @app.route("/")
@@ -167,15 +171,18 @@ def _register_routes(app: Flask) -> None:
 
     def _get_findings_for_file(file_bytes: bytes, filename: str) -> list[dict]:
         """Ekstrahuje findings z pliku i grupuje je."""
-        if filename.lower().endswith(".pdf"):
+        file_ext = filename.lower()
+        if file_ext.endswith(".pdf"):
             raw_findings = anonymizer_service.analyze_pdf(file_bytes)
+        elif file_ext.endswith(".docx"):
+            raw_findings = anonymizer_service.analyze_docx(file_bytes)
+        elif file_ext.endswith(".xlsx"):
+            raw_findings = anonymizer_service.analyze_xlsx(file_bytes)
         else:
-            # MVP obsłuży inne formaty później, teraz fallback na tekst
-            text = file_bytes.decode("utf-8", errors="ignore")
-            raw_findings = anonymizer_service.analyze_text(text)
+            # Brak wsparcia
+            return []
 
         # Grupowanie unikalnych znalezisk po (typ, wartosc)
-        # Aby kazda unikalna wartosc miala jeden wiersz w tabeli i jeden licznik
         grouped: dict[tuple[str, str], dict] = {}
         for f in raw_findings:
             key = (f["entity_type"], f["raw_value"])
@@ -192,7 +199,7 @@ def _register_routes(app: Flask) -> None:
                 }
             grouped[key]["count"] += 1
 
-        # Nadajemy identyfikatory i zamieniamy w liste
+        # ... (reszta funkcji _get_findings_for_file pozostaje bez zmian)
         result = []
         for idx, (key, value) in enumerate(grouped.items(), start=1):
             value["id"] = str(idx)
@@ -202,7 +209,7 @@ def _register_routes(app: Flask) -> None:
 
     @app.route("/analyze", methods=["POST"])
     def analyze():
-        """Prawdziwa trasa analizy pliku."""
+        """Trasa analizy pliku."""
         if "file" not in request.files:
             return jsonify({"error": "Brak pliku"}), 400
 
@@ -210,7 +217,16 @@ def _register_routes(app: Flask) -> None:
         if file.filename == "":
             return jsonify({"error": "Pusta nazwa pliku"}), 400
 
-        # Odczyt pliku do pamieci bez zapisu na dysku
+        filename_lower = file.filename.lower()
+
+        # Walidacja formatu
+        _SUPPORTED = (".pdf", ".docx", ".xlsx")
+        _UNSUPPORTED = (".doc", ".xls", ".docm", ".xlsm", ".xlsb")
+        if any(filename_lower.endswith(ext) for ext in _UNSUPPORTED):
+            return jsonify({"error": f"Format {Path(file.filename).suffix} nie jest obsługiwany. Obsługiwane formaty: PDF, DOCX, XLSX."}), 400
+        if not any(filename_lower.endswith(ext) for ext in _SUPPORTED):
+            return jsonify({"error": "Nieobsługiwany format pliku. Obsługiwane: PDF, DOCX, XLSX."}), 400
+
         file_bytes = file.read()
 
         try:
@@ -221,7 +237,7 @@ def _register_routes(app: Flask) -> None:
 
     @app.route("/anonymize", methods=["POST"])
     def anonymize():
-        """Prawdziwa trasa anonimizacji pliku."""
+        """Trasa anonimizacji pliku."""
         if "file" not in request.files:
             return jsonify({"error": "Brak pliku"}), 400
 
@@ -233,25 +249,25 @@ def _register_routes(app: Flask) -> None:
         except Exception:
             return jsonify({"error": "Niepoprawny format confirmed_ids"}), 400
 
-        # Odczyt pliku do pamieci bez zapisu na dysku
         file_bytes = file.read()
 
         try:
-            # Ponownie analizujemy, aby dostac te same klucze wejsciowe
             findings = _get_findings_for_file(file_bytes, file.filename)
-
-            # Filtrujemy tylko zatwierdzone przez uzytkownika
             confirmed_findings = [f for f in findings if f["id"] in confirmed_ids]
 
-            # Wywolanie odpowiedniego adaptera do modyfikacji dokumentu
-            if file.filename.lower().endswith(".pdf"):
+            file_ext = file.filename.lower()
+            if file_ext.endswith(".pdf"):
                 out_bytes = pdf_adapter.anonymize(file_bytes, confirmed_findings)
                 mimetype = "application/pdf"
+            elif file_ext.endswith(".docx"):
+                out_bytes = docx_adapter.anonymize(file_bytes, confirmed_findings)
+                mimetype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            elif file_ext.endswith(".xlsx"):
+                out_bytes = xlsx_adapter.anonymize(file_bytes, confirmed_findings)
+                mimetype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             else:
-                # Fallback lub brak wsparcia
-                return jsonify({"error": "Obslugiwane sa w tym momencie wylacznie pliki PDF"}), 400
+                return jsonify({"error": "Nieobsługiwany format"}), 400
 
-            # Przeslanie gotowego pliku ze zmieniona nazwa
             out_io = io.BytesIO(out_bytes)
             return send_file(
                 out_io,

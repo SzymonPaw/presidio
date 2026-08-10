@@ -3,8 +3,8 @@
 ## 0. Cel i zakres MVP
 
 * [x] Zbudować lokalną aplikację webową do wykrywania i anonimizacji danych w dokumentach.
-* [ ] MVP obsługuje: `.docx`
-* [ ] MVP obsługuje: `.xlsx`
+* [x] MVP obsługuje: `.docx`
+* [x] MVP obsługuje: `.xlsx`
 * [x] MVP obsługuje: PDF z warstwą tekstową.
 * [ ] Kolejne etapy: starsze formaty Word/Excel, następnie skany PDF z OCR.
 * [x] Język podstawowy: polski.
@@ -46,6 +46,7 @@
   * Python Launcherem;
   * dodaniem Pythona do `PATH`.
 * [x] Docker, WSL, Hyper-V, Visual Studio ani lokalny serwer MySQL nie są potrzebne do MVP.
+  Zaktualizowano środowisko: docelowym środowiskiem jest Python 3.13.14 (brak konieczności regresji na 3.12).
 
 ### 2.2. Przygotowanie projektu bez administratora
 
@@ -177,26 +178,26 @@ py -3.13.14 -m venv .venv
 * [x] Ustawić `Cache-Control: no-store` i `Pragma: no-cache`.
 
 ## 8. Adapter DOCX
-* [ ] Traktować DOCX jako pakiet ZIP/OOXML.
-* [ ] Modyfikować wyłącznie odpowiednie węzły tekstowe XML.
-* [ ] Obsłużyć treść główną, tabele, nagłówki, stopki, przypisy, komentarze, hiperłącza i pola tekstowe dostępne w XML.
-* [ ] Uwzględnić tekst ukryty oraz śledzenie zmian, aby pierwotna wartość nie pozostała w `w:delText`, komentarzach lub rewizjach.
-* [ ] Łączyć tekst rozbity pomiędzy wiele runów i wykonywać podmiany od końca zakresu.
-* [ ] Zachować formatowanie istniejących runów.
-* [ ] Nie używać pełnego nadpisania `paragraph.text`.
-* [ ] Nie zmieniać relacji, obrazów, stylów, numeracji, motywów ani ustawień sekcji.
-* [ ] Oczyścić metadane dokumentu, jeżeli zawierają wykryte dane.
-* [ ] Zgłosić ostrzeżenie dla osadzonych obiektów lub elementów, których nie można bezpiecznie przeanalizować.
+* [x] Traktować DOCX jako pakiet ZIP/OOXML. (zaimplementowano)
+* [x] Modyfikować wyłącznie odpowiednie węzły tekstowe XML. (zaimplementowano)
+* [x] Obsłużyć treść główną, tabele, nagłówki, stopki, przypisy, komentarze, hiperłącza i pola tekstowe dostępne w XML. (zaimplementowano)
+* [x] Uwzględnić tekst ukryty oraz śledzenie zmian, aby pierwotna wartość nie pozostała w `w:delText`, komentarzach lub rewizjach. (zaimplementowano)
+* [x] Łączyć tekst rozbity pomiędzy wiele runów i wykonywać podmiany od końca zakresu. (zaimplementowano)
+* [x] Zachować formatowanie istniejących runów. (zaimplementowano)
+* [x] Nie używać pełnego nadpisania `paragraph.text`. (zaimplementowano)
+* [x] Nie zmieniać relacji, obrazów, stylów, numeracji, motywów ani ustawień sekcji. (zaimplementowano)
+* [x] Oczyścić metadane dokumentu, jeżeli zawierają wykryte dane. (zaimplementowano)
+* [x] Zgłosić ostrzeżenie dla osadzonych obiektów lub elementów, których nie można bezpiecznie przeanalizować. (zaimplementowano)
 
 ## 9. Adapter XLSX
-* [ ] Traktować XLSX jako pakiet ZIP/OOXML.
-* [ ] Modyfikować tekst w `sharedStrings`, `inlineStr`, komentarzach, nagłówkach i stopkach.
-* [ ] Analizować również arkusze ukryte i bardzo ukryte.
-* [ ] Zachować formuły, style, scalania, szerokości, obrazy, wykresy, filtry i połączenia.
-* [ ] Lokalizację wykrycia zapisywać jako `arkusz + komórka`.
-* [ ] Nie wykonywać pełnego zapisu pliku przez `openpyxl`, jeżeli może to usunąć nieobsługiwane elementy.
-* [ ] Oczyścić metadane skoroszytu, jeżeli zawierają wykryte dane.
-* [ ] W MVP odrzucać `.xls`, `.xlsm`, pliki zaszyfrowane i chronione hasłem.
+* [x] Traktować XLSX jako pakiet ZIP/OOXML. (zaimplementowano)
+* [x] Modyfikować tekst w `sharedStrings`, `inlineStr`, komentarzach, nagłówkach i stopkach. (zaimplementowano)
+* [x] Analizować również arkusze ukryte i bardzo ukryte. (zaimplementowano)
+* [x] Zachować formuły, style, scalania, szerokości, obrazy, wykresy, filtry i połączenia. (zaimplementowano)
+* [x] Lokalizację wykrycia zapisywać jako `arkusz + komórka`. (zaimplementowano)
+* [x] Nie wykonywać pełnego zapisu pliku przez `openpyxl`, jeżeli może to usunąć nieobsługiwane elementy. (zaimplementowano)
+* [x] Oczyścić metadane skoroszytu, jeżeli zawierają wykryte dane. (zaimplementowano)
+* [x] W MVP odrzucać `.xls`, `.xlsm`, pliki zaszyfrowane i chronione hasłem. (zaimplementowano)
 
 ## 10. Adapter PDF
 * [x] W MVP obsługiwać tylko PDF z warstwą tekstową.

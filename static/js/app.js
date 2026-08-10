@@ -95,8 +95,8 @@
             return;
         }
 
-        var isPdf = selectedFile && selectedFile.name.toLowerCase().endswith ?
-            selectedFile.name.toLowerCase().endswith('.pdf') :
+        var isPdf = selectedFile && selectedFile.name.toLowerCase().endsWith ?
+            selectedFile.name.toLowerCase().endsWith('.pdf') :
             /\.pdf$/i.test(selectedFile.name);
 
         var html = '<h2>Wykryte dane</h2>';
