@@ -52,7 +52,7 @@
 * [x] Utworzyć folder projektu w katalogu użytkownika.
 * [x] Utworzyć środowisko:
 ```bat
-py -3.12 -m venv .venv
+py -3.13.14 -m venv .venv
 ```
 * [x] Instalować pakiety bez aktywowania środowiska PowerShell:
 ```bat
