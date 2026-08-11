@@ -1189,6 +1189,9 @@ class TerytDictionaryRecognizer(EntityRecognizer):
                     )
                 )
 
+            offset += len(line)
+        return results
+
 # ---------------------------------------------------------------------------
 # 12. Recognizer Email
 # ---------------------------------------------------------------------------
