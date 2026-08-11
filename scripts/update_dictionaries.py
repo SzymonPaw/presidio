@@ -662,6 +662,331 @@ def process_terc_file(
     return rejections
 
 # ---------------------------------------------------------------------------
+# Przetwarzanie ULIC (ulice)
+# ---------------------------------------------------------------------------
+
+_ULIC_REQUIRED_COLUMNS = [
+    "nazwa_1",
+    "nazwa_2",
+]
+
+
+def _read_ulic_text(file_path: str) -> str:
+    """
+    Wczytuje ULIC z kilkoma bezpiecznymi probami kodowania.
+
+    Pliki GUS moga wystepowac w kilku kodowaniach,
+    dlatego stosujemy ten sam zestaw co dla TERC.
+    """
+
+    with open(file_path, "rb") as f:
+        raw = f.read()
+
+    encodings = (
+        "utf-8-sig",
+        "utf-8",
+        "cp1250",
+        "iso-8859-2",
+    )
+
+    for encoding in encodings:
+        try:
+            text = raw.decode(encoding)
+
+            print(
+                f"  Kodowanie ULIC: {encoding}"
+            )
+
+            return text
+
+        except UnicodeDecodeError:
+            continue
+
+    print(
+        "BLAD: Nie udalo sie rozpoznac kodowania "
+        f"pliku {os.path.basename(file_path)}."
+    )
+
+    sys.exit(1)
+
+
+def process_ulic_file(
+    file_path: str,
+    output_path: str,
+) -> list[list[str]]:
+    """
+    Przetwarza pelny plik ULIC.
+
+    Generuje:
+        streets.txt
+
+    Nazwa ulicy jest budowana z:
+
+        NAZWA_2 + NAZWA_1
+
+    Przyklad:
+
+        NAZWA_2 = Juliusza
+        NAZWA_1 = Slowackiego
+
+    wynik:
+
+        juliusza slowackiego
+
+    Pole CECHA celowo nie jest dodawane.
+
+    Chcemy wykrywac wartosc pola formularza:
+
+        Ulica
+        OPACKA
+
+    a nie tylko pelne zapisy:
+
+        ul. Opacka
+    """
+
+    print(
+        f"\nPrzetwarzanie ULIC: "
+        f"{os.path.basename(file_path)} ..."
+    )
+
+    if not os.path.exists(
+        file_path
+    ):
+        print(
+            f"BLAD: Brak pliku zrodlowego: "
+            f"{file_path}"
+        )
+        sys.exit(1)
+
+    text = _read_ulic_text(
+        file_path
+    )
+
+    lines = text.splitlines()
+
+    if not lines:
+        print(
+            f"BLAD: Pusty plik {file_path}"
+        )
+        sys.exit(1)
+
+    delimiter = _detect_delimiter(
+        lines[0]
+    )
+
+    if not delimiter:
+        delimiter = ";"
+
+    reader = csv.reader(
+        lines,
+        delimiter=delimiter,
+        quoting=csv.QUOTE_MINIMAL,
+    )
+
+    header_raw = next(
+        reader,
+        None,
+    )
+
+    if not header_raw:
+        print(
+            f"BLAD: Pusty plik {file_path}"
+        )
+        sys.exit(1)
+
+    header = [
+        col
+        .lstrip("\ufeff")
+        .strip()
+        .lower()
+        for col in header_raw
+    ]
+
+    print(
+        f"  Kolumny ULIC: {header}"
+    )
+
+    # -------------------------------------------------------
+    # Potrzebujemy tylko skladowych nazwy ulicy.
+    #
+    # CECHA, SYM_UL i STAN_NA nie sa wymagane
+    # do naszego slownika wykrywania.
+    # -------------------------------------------------------
+
+    missing_columns = [
+        column
+        for column in _ULIC_REQUIRED_COLUMNS
+        if column not in header
+    ]
+
+    if missing_columns:
+        print(
+            "BLAD: Brakuje wymaganych kolumn ULIC: "
+            f"{missing_columns}"
+        )
+
+        print(
+            f"  Znalezione kolumny: {header}"
+        )
+
+        print(
+            f"  Wymagane kolumny: "
+            f"{_ULIC_REQUIRED_COLUMNS}"
+        )
+
+        sys.exit(1)
+
+    nazwa_1_idx = header.index(
+        "nazwa_1"
+    )
+
+    nazwa_2_idx = header.index(
+        "nazwa_2"
+    )
+
+    max_required_index = max(
+        nazwa_1_idx,
+        nazwa_2_idx,
+    )
+
+    streets: set[str] = set()
+
+    empty_count = 0
+    duplicates = 0
+    rejected = 0
+
+    rejections: list[list[str]] = []
+
+    # -------------------------------------------------------
+    # Rekordy ULIC
+    # -------------------------------------------------------
+
+    for line_no, row in enumerate(
+        reader,
+        start=2,
+    ):
+        if (
+            not row
+            or len(row) <= max_required_index
+        ):
+            empty_count += 1
+            continue
+
+        nazwa_1 = row[
+            nazwa_1_idx
+        ].strip()
+
+        nazwa_2 = row[
+            nazwa_2_idx
+        ].strip()
+
+        # ---------------------------------------------------
+        # Wedlug struktury TERYT:
+        #
+        # pelna nazwa bez cechy =
+        #
+        # NAZWA_2 + NAZWA_1
+        #
+        # Jesli NAZWA_2 jest puste, zostaje samo NAZWA_1.
+        # ---------------------------------------------------
+
+        parts = []
+
+        if nazwa_2:
+            parts.append(
+                nazwa_2
+            )
+
+        if nazwa_1:
+            parts.append(
+                nazwa_1
+            )
+
+        street = " ".join(
+            parts
+        )
+
+        # Normalizacja wielokrotnych spacji,
+        # tabulatorow itd.
+        street = " ".join(
+            street.split()
+        )
+
+        if not street:
+            empty_count += 1
+            continue
+
+        if _has_suspicious(
+            street
+        ):
+            rejected += 1
+
+            rejections.append(
+                [
+                    file_path,
+                    str(line_no),
+                    street,
+                    (
+                        "Podejrzany znak zastepczy "
+                        "(? lub U+FFFD)"
+                    ),
+                ]
+            )
+
+            continue
+
+        normalized = (
+            street
+            .strip()
+            .lower()
+        )
+
+        if normalized in streets:
+            duplicates += 1
+            continue
+
+        streets.add(
+            normalized
+        )
+
+    # -------------------------------------------------------
+    # Zapis
+    # -------------------------------------------------------
+
+    _write_simple_dictionary(
+        output_path,
+        streets,
+    )
+
+    print()
+    print(
+        "  ULIC - wyniki:"
+    )
+
+    print(
+        "  Unikalne ulice : "
+        f"{len(streets)}"
+    )
+
+    print(
+        "  Puste          : "
+        f"{empty_count}"
+    )
+
+    print(
+        "  Zduplikowane   : "
+        f"{duplicates}"
+    )
+
+    print(
+        "  Odrzucone      : "
+        f"{rejected}"
+    )
+
+    return rejections
+
+# ---------------------------------------------------------------------------
 # Przetwarzanie SIMC (miejscowosci)
 # ---------------------------------------------------------------------------
 _LOCALITY_COLUMNS = ["nazwa", "name", "miejscowosc", "miejscowość"]
@@ -836,6 +1161,16 @@ def main() -> None:
         "communes.txt",
     )
 
+    ulic_src = os.path.join(
+        SOURCE_DIR,
+        "ULIC.csv",
+    )
+
+    streets_out = os.path.join(
+        RECOGNIZERS_DIR,
+        "streets.txt",
+    )
+
 
     all_rejections: list[list[str]] = []
 
@@ -868,6 +1203,13 @@ def main() -> None:
             voivodeships_out,
             counties_out,
             communes_out,
+        )
+    )
+
+    all_rejections.extend(
+        process_ulic_file(
+            ulic_src,
+            streets_out,
         )
     )
 

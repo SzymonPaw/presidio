@@ -994,28 +994,6 @@ class AddressRecognizer(EntityRecognizer):
 # ---------------------------------------------------------------------------
 
 class TerytDictionaryRecognizer(EntityRecognizer):
-    """
-    Rozpoznaje jednostki terytorialne i miejscowosci
-    na podstawie lokalnych slownikow TERYT.
-
-    Zrodla:
-    - voivodeships.txt -> wojewodztwa
-    - counties.txt     -> powiaty
-    - communes.txt     -> gminy
-    - localities.txt   -> miejscowosci (SIMC)
-
-    Wszystkie trafienia zwracane sa jako ADDRESS,
-    dzieki czemu nie trzeba zmieniac MarkerRegistry,
-    UI ani listy wspieranych encji.
-
-    Recognizer jest celowo konserwatywny:
-    wartosc TERYT musi stanowic samodzielna linie tekstu.
-
-    Jest to szczegolnie przydatne w formularzach PDF,
-    gdzie etykieta np. "Wojewodztwo" albo "Miejscowosc"
-    moze byc obrazem, a wpisana wartosc normalnym tekstem.
-    """
-
     def __init__(self):
         super().__init__(
             supported_entities=["ADDRESS"],
@@ -1039,14 +1017,12 @@ class TerytDictionaryRecognizer(EntityRecognizer):
             "localities.txt"
         )
 
+        self.streets = _load_simple_txt(
+            "streets.txt"
+        )
+
     @staticmethod
     def _normalize(value: str) -> str:
-        """
-        Normalizacja tylko do porownania ze slownikiem.
-
-        Nie modyfikujemy oryginalnego tekstu dokumentu,
-        dlatego offsety start/end pozostaja prawidlowe.
-        """
 
         value = value.replace(
             "\u00a0",
@@ -1060,6 +1036,28 @@ class TerytDictionaryRecognizer(EntityRecognizer):
         )
 
         return value.strip().upper()
+
+    @staticmethod
+    def _has_street_context(
+        text: str,
+        start: int,
+    ) -> bool:
+        before = text[
+            max(0, start - 50):
+            start
+        ]
+
+        return bool(
+            re.search(
+                r"(?:"
+                r"ulica"
+                r"|ul\."
+                r")"
+                r"[ \t\r\n:]*$",
+                before,
+                re.IGNORECASE,
+            )
+        )
 
     def analyze(
         self,
@@ -1092,13 +1090,60 @@ class TerytDictionaryRecognizer(EntityRecognizer):
                 candidate
             )
 
+            # ------------------------------------------------
+            # Dokladna pozycja kandydata w calym tekscie.
+            # ------------------------------------------------
+
+            leading_whitespace = (
+                len(visible_line)
+                - len(
+                    visible_line.lstrip()
+                )
+            )
+
+            start = (
+                offset
+                + leading_whitespace
+            )
+
+            end = (
+                start
+                + len(candidate)
+            )
+
             score = None
+
+            # ------------------------------------------------
+            # Ulica / ULIC
+            #
+            # Ulice sprawdzamy jako pierwsze, ale TYLKO
+            # przy bezposrednim kontekscie "Ulica" / "ul.".
+            #
+            # Przyklad:
+            #
+            # Ulica
+            # OPACKA
+            #
+            # -> ADDRESS 0.95
+            #
+            # Samo slowo "Długa" w zwyklym tekscie
+            # nie zostanie wykryte.
+            # ------------------------------------------------
+
+            if (
+                normalized in self.streets
+                and self._has_street_context(
+                    text,
+                    start,
+                )
+            ):
+                score = 0.95
 
             # ------------------------------------------------
             # Wojewodztwo
             # ------------------------------------------------
 
-            if normalized in self.voivodeships:
+            elif normalized in self.voivodeships:
                 score = 0.96
 
             # ------------------------------------------------
@@ -1135,23 +1180,6 @@ class TerytDictionaryRecognizer(EntityRecognizer):
                 score = 0.82
 
             if score is not None:
-                leading_whitespace = (
-                    len(visible_line)
-                    - len(
-                        visible_line.lstrip()
-                    )
-                )
-
-                start = (
-                    offset
-                    + leading_whitespace
-                )
-
-                end = (
-                    start
-                    + len(candidate)
-                )
-
                 results.append(
                     RecognizerResult(
                         "ADDRESS",
@@ -1160,10 +1188,6 @@ class TerytDictionaryRecognizer(EntityRecognizer):
                         score,
                     )
                 )
-
-            offset += len(line)
-
-        return results
 
 # ---------------------------------------------------------------------------
 # 12. Recognizer Email
