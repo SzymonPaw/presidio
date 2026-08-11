@@ -131,21 +131,77 @@ def _has_context_near(text: str, pos: int, keywords: list, window_chars: int = 1
 # 1. Recognizer NIP
 # ---------------------------------------------------------------------------
 class NipRecognizer(EntityRecognizer):
-    _PATTERN = re.compile(r"\b(\d[\s\r\n-]?\d[\s\r\n-]?\d[\s\r\n-]?\d[\s\r\n-]?\d[\s\r\n-]?\d[\s\r\n-]?\d[\s\r\n-]?\d[\s\r\n-]?\d[\s\r\n-]?\d)\b")
-    _CONTEXT = ["nip", "n.i.p.", "numer identyfikacji podatkowej"]
+    _PATTERN = re.compile(
+        r"(?<!\d)"
+        r"("
+        r"\d(?:[\s\r\n-]?\d){9}"
+        r")"
+        r"(?!\d)"
+    )
+
+    _CONTEXT = [
+        "nip",
+        "n.i.p.",
+        "numer identyfikacji podatkowej",
+    ]
 
     def __init__(self):
-        super().__init__(supported_entities=["PL_NIP"], supported_language="pl", name="NipRecognizer")
+        super().__init__(
+            supported_entities=["PL_NIP"],
+            supported_language="pl",
+            name="NipRecognizer",
+        )
 
-    def analyze(self, text: str, entities: List[str], nlp_artifacts=None):
+    def analyze(
+        self,
+        text: str,
+        entities: List[str],
+        nlp_artifacts=None,
+    ):
         results = []
-        for m in self._PATTERN.finditer(text):
-            raw = m.group(1)
-            digits = re.sub(r"[\s\r\n-]", "", raw)
-            if len(digits) != 10 or not validate_nip(digits):
+
+        for match in self._PATTERN.finditer(text):
+            raw = match.group(1)
+
+            digits = re.sub(
+                r"[\s\r\n-]",
+                "",
+                raw,
+            )
+
+            # Musi być dokładnie 10 cyfr.
+            if len(digits) != 10:
                 continue
-            if _has_context_near(text, m.start(), self._CONTEXT, window_chars=200):
-                results.append(RecognizerResult("PL_NIP", m.start(), m.end(), 0.99))
+
+            # Niepoprawna suma kontrolna = odrzucamy.
+            if not validate_nip(digits):
+                continue
+
+            has_context = _has_context_near(
+                text,
+                match.start(1),
+                self._CONTEXT,
+                window_chars=200,
+            )
+
+            # Poprawny NIP z jednoznaczną etykietą.
+            if has_context:
+                score = 0.99
+
+            # Poprawny checksum, ale brak kontekstu.
+            # Nie wyrzucamy go — pokazujemy do weryfikacji.
+            else:
+                score = 0.80
+
+            results.append(
+                RecognizerResult(
+                    "PL_NIP",
+                    match.start(1),
+                    match.end(1),
+                    score,
+                )
+            )
+
         return results
 
 
@@ -174,22 +230,77 @@ class RegonRecognizer(EntityRecognizer):
 # 3. Recognizer KRS
 # ---------------------------------------------------------------------------
 class KrsRecognizer(EntityRecognizer):
-    _PATTERN = re.compile(r"\b(\d{10})\b")
-    _CONTEXT = ["krs", "krajowy rejestr sądowy", "rejestr sądowy"]
+    _PATTERN = re.compile(
+        r"(?<!\d)"
+        r"("
+        r"\d(?:[ \t-]?\d){9}"
+        r")"
+        r"(?!\d)"
+    )
+
+    _CONTEXT = [
+        "krs",
+        "krajowy rejestr sądowy",
+        "rejestr sądowy",
+        "nr krs",
+        "numer krs",
+    ]
 
     def __init__(self):
-        super().__init__(supported_entities=["PL_KRS"], supported_language="pl", name="KrsRecognizer")
+        super().__init__(
+            supported_entities=["PL_KRS"],
+            supported_language="pl",
+            name="KrsRecognizer",
+        )
 
-    def analyze(self, text: str, entities: List[str], nlp_artifacts=None):
+    def analyze(
+        self,
+        text: str,
+        entities: List[str],
+        nlp_artifacts=None,
+    ):
         results = []
-        for m in self._PATTERN.finditer(text):
-            raw = m.group(1)
-            if not _has_context_near(text, m.start(), self._CONTEXT, window_chars=300):
+
+        for match in self._PATTERN.finditer(text):
+            raw = match.group(1)
+
+            digits = re.sub(
+                r"[ \t-]",
+                "",
+                raw,
+            )
+
+            if len(digits) != 10:
                 continue
-            # NIP również ma 10 cyfr.
-            if validate_nip(raw):
+
+            if validate_nip(digits):
                 continue
-            results.append(RecognizerResult("PL_KRS", m.start(), m.end(), 0.98))
+
+            has_context = _has_context_near(
+                text,
+                match.start(1),
+                self._CONTEXT,
+                window_chars=300,
+            )
+
+            if has_context:
+                score = 0.98
+
+            else:
+                if not digits.startswith("0"):
+                    continue
+
+                score = 0.80
+
+            results.append(
+                RecognizerResult(
+                    "PL_KRS",
+                    match.start(1),
+                    match.end(1),
+                    score,
+                )
+            )
+
         return results
 
 
