@@ -833,6 +833,182 @@ class AddressRecognizer(EntityRecognizer):
         )
 
 # ---------------------------------------------------------------------------
+# Recognizer TERYT: wojewodztwa, powiaty, gminy i miejscowosci
+# ---------------------------------------------------------------------------
+
+class TerytDictionaryRecognizer(EntityRecognizer):
+    """
+    Rozpoznaje jednostki terytorialne i miejscowosci
+    na podstawie lokalnych slownikow TERYT.
+
+    Zrodla:
+    - voivodeships.txt -> wojewodztwa
+    - counties.txt     -> powiaty
+    - communes.txt     -> gminy
+    - localities.txt   -> miejscowosci (SIMC)
+
+    Wszystkie trafienia zwracane sa jako ADDRESS,
+    dzieki czemu nie trzeba zmieniac MarkerRegistry,
+    UI ani listy wspieranych encji.
+
+    Recognizer jest celowo konserwatywny:
+    wartosc TERYT musi stanowic samodzielna linie tekstu.
+
+    Jest to szczegolnie przydatne w formularzach PDF,
+    gdzie etykieta np. "Wojewodztwo" albo "Miejscowosc"
+    moze byc obrazem, a wpisana wartosc normalnym tekstem.
+    """
+
+    def __init__(self):
+        super().__init__(
+            supported_entities=["ADDRESS"],
+            supported_language="pl",
+            name="TerytDictionaryRecognizer",
+        )
+
+        self.voivodeships = _load_simple_txt(
+            "voivodeships.txt"
+        )
+
+        self.counties = _load_simple_txt(
+            "counties.txt"
+        )
+
+        self.communes = _load_simple_txt(
+            "communes.txt"
+        )
+
+        self.localities = _load_simple_txt(
+            "localities.txt"
+        )
+
+    @staticmethod
+    def _normalize(value: str) -> str:
+        """
+        Normalizacja tylko do porownania ze slownikiem.
+
+        Nie modyfikujemy oryginalnego tekstu dokumentu,
+        dlatego offsety start/end pozostaja prawidlowe.
+        """
+
+        value = value.replace(
+            "\u00a0",
+            " ",
+        )
+
+        value = re.sub(
+            r"[ \t]+",
+            " ",
+            value,
+        )
+
+        return value.strip().upper()
+
+    def analyze(
+        self,
+        text: str,
+        entities: List[str],
+        nlp_artifacts=None,
+    ):
+        results = []
+
+        if not text:
+            return results
+
+        offset = 0
+
+        for line in text.splitlines(
+            keepends=True
+        ):
+            # Usuwamy tylko znaki konca linii.
+            visible_line = line.rstrip(
+                "\r\n"
+            )
+
+            candidate = visible_line.strip()
+
+            if not candidate:
+                offset += len(line)
+                continue
+
+            normalized = self._normalize(
+                candidate
+            )
+
+            score = None
+
+            # ------------------------------------------------
+            # Wojewodztwo
+            # ------------------------------------------------
+
+            if normalized in self.voivodeships:
+                score = 0.96
+
+            # ------------------------------------------------
+            # Powiat
+            # ------------------------------------------------
+
+            elif normalized in self.counties:
+                score = 0.94
+
+            # ------------------------------------------------
+            # Gmina
+            #
+            # Obejmuje rowniez aliasy generowane przez
+            # update_dictionaries.py, np.:
+            #
+            # M.GDANSK
+            # M. GDANSK
+            # ------------------------------------------------
+
+            elif normalized in self.communes:
+                score = 0.92
+
+            # ------------------------------------------------
+            # Miejscowosc / SIMC
+            #
+            # Najnizszy score, bo slownik miejscowosci jest
+            # duzy i zawiera nazwy, ktore potencjalnie moga
+            # wystapic rowniez w zwyklym tekscie.
+            #
+            # Wymog calej linii mocno ogranicza false-positive.
+            # ------------------------------------------------
+
+            elif normalized in self.localities:
+                score = 0.82
+
+            if score is not None:
+                leading_whitespace = (
+                    len(visible_line)
+                    - len(
+                        visible_line.lstrip()
+                    )
+                )
+
+                start = (
+                    offset
+                    + leading_whitespace
+                )
+
+                end = (
+                    start
+                    + len(candidate)
+                )
+
+                results.append(
+                    RecognizerResult(
+                        "ADDRESS",
+                        start,
+                        end,
+                        score,
+                    )
+                )
+
+            offset += len(line)
+
+        return results
+
+# ---------------------------------------------------------------------------
 # 12. Recognizer Email
 # ---------------------------------------------------------------------------
 class EmailRecognizer(EntityRecognizer):
@@ -907,6 +1083,7 @@ class DeterministicAnalyzer:
             EmailRecognizer(),
             OrganizationRecognizer(),
             AddressRecognizer(),
+            TerytDictionaryRecognizer(),
             PersonDictionaryRecognizer(),
             IdentityDocumentsRecognizer(),
             LicensePlateRecognizer(),
