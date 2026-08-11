@@ -100,7 +100,7 @@
             /\.pdf$/i.test(selectedFile.name);
 
         var html = '<h2>Wykryte dane</h2>';
-        html += '<table class="findings-table"><thead><tr><th>Typ</th><th>Znacznik</th><th>Siła</th><th>Liczba</th><th>Anonimizuj</th>';
+        html += '<table class="findings-table"><thead><tr><th>Typ</th><th>Znacznik</th><th>Pokrycie</th><th>Liczba</th><th>Anonimizuj</th>';
         // html += '<table class="findings-table"><thead><tr><th>Typ</th><th>Znacznik</th><th>Siła</th><th>Powód</th><th>Liczba</th><th>Anonimizuj</th>';
         if (isPdf) {
             html += '<th>Akcje</th>';
@@ -111,7 +111,7 @@
             html += '<tr>';
             html += '<td>' + escapeHtml(f.entity_type) + '</td>';
             html += '<td>' + escapeHtml(f.marker) + '</td>';
-            html += '<td>' + f.score.toFixed(2) + '</td>';
+            html += '<td>' + (f.score.toFixed(2) * 100) + '%</td>';
             // html += '<td>' + escapeHtml(f.reason) + '</td>';
             html += '<td>' + f.count + '</td>';
             html += '<td><input type="checkbox" name="anonymize" value="' + f.id + '" checked></td>';
