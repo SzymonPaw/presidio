@@ -416,22 +416,101 @@ class IdentityDocumentsRecognizer(EntityRecognizer):
 # 8. Recognizer Tablic Rejestracyjnych
 # ---------------------------------------------------------------------------
 class LicensePlateRecognizer(EntityRecognizer):
-    # OSTRZEJSZY WZORZEC: litery MUSZĄ być WIELKIE
-    _PATTERN = re.compile(r"(?<![A-Z0-9])([A-Z]{2,3})[ -]?([A-Z0-9]{4,5})(?![A-Z0-9])")
-    _CONTEXT = ["nr rejestracyjny", "nr rej.", "rejestracja", "pojazd", "samochód", "tablica"]
+
+    _PATTERN = re.compile(
+        r"(?<![A-ZĄĆĘŁŃÓŚŹŻ0-9])"
+        r"([A-Z]{2,3})"
+        r"[ \t-]?"
+        r"([A-Z0-9]{4,5})"
+        r"(?![A-ZĄĆĘŁŃÓŚŹŻ0-9])",
+        re.IGNORECASE,
+    )
+
+    _CONTEXT = [
+        "nr rejestracyjny",
+        "nr rej.",
+        "rejestracja",
+        "pojazd",
+        "samochód",
+        "tablica",
+    ]
 
     def __init__(self):
-        super().__init__(supported_entities=["LICENSE_PLATE"], supported_language="pl", name="LicensePlateRecognizer")
-        self.prefixes = _load_simple_txt("vehicle_prefixes.txt")
+        super().__init__(
+            supported_entities=["LICENSE_PLATE"],
+            supported_language="pl",
+            name="LicensePlateRecognizer",
+        )
 
-    def analyze(self, text: str, entities: List[str], nlp_artifacts=None):
+        self.prefixes = _load_simple_txt(
+            "vehicle_prefixes.txt"
+        )
+
+    def analyze(
+        self,
+        text: str,
+        entities: List[str],
+        nlp_artifacts=None,
+    ):
         results = []
-        for m in self._PATTERN.finditer(text):
-            prefix = m.group(1).upper()
+
+        for match in self._PATTERN.finditer(text):
+            raw_prefix = match.group(1)
+
+            prefix = raw_prefix.upper()
+            vehicle_part = match.group(2).upper()
+
             if prefix not in self.prefixes:
                 continue
-            score = 0.90 if _has_context_near(text, m.start(), self._CONTEXT, 150) else 0.60
-            results.append(RecognizerResult("LICENSE_PLATE", m.start(), m.end(), score))
+
+            if not any(
+                char.isdigit()
+                for char in vehicle_part
+            ):
+                continue
+
+            if (
+                len(prefix) == 2
+                and len(vehicle_part) != 5
+            ):
+                continue
+
+            # Dla prefiksu trzyliterowego pozostawiamy
+            # 4 lub 5 znaków.
+            if (
+                len(prefix) == 3
+                and len(vehicle_part) not in (4, 5)
+            ):
+                continue
+
+            has_context = _has_context_near(
+                text,
+                match.start(),
+                self._CONTEXT,
+                150,
+            )
+
+            if (
+                raw_prefix != raw_prefix.upper()
+                and not has_context
+            ):
+                continue
+
+            score = (
+                0.90
+                if has_context
+                else 0.60
+            )
+
+            results.append(
+                RecognizerResult(
+                    "LICENSE_PLATE",
+                    match.start(),
+                    match.end(),
+                    score,
+                )
+            )
+
         return results
 
 
@@ -467,25 +546,103 @@ class PolicyClaimRecognizer(EntityRecognizer):
 # 10. Recognizer Firmy
 # ---------------------------------------------------------------------------
 class OrganizationRecognizer(EntityRecognizer):
-    def __init__(self):
-        super().__init__(supported_entities=["ORGANIZATION"], supported_language="pl", name="OrganizationRecognizer")
-        self.legal_forms = _load_legal_forms()
-        sorted_forms = sorted(self.legal_forms, key=len, reverse=True)
-        escaped_postfix = [re.escape(f).replace(r"\ ", r"[\s\n\r]+") for f in sorted_forms]
-        escaped_forms = "|".join(escaped_postfix)
 
-        # Regex: wyłapuje formę prawną na końcu nazwy (z obsługą łamania linii)
-        self._form_pattern = re.compile(
-            rf"([A-ZĄĆĘŁŃÓŚŹŻ0-9_\-+&\'\"„”][A-ZĄĆĘŁŃÓŚŹŻ0-9_\-+&\'\"„”a-ząćęłńóśźż\s\r\n]{{2,100}})[\s\n\r]+({escaped_forms})",
-            re.IGNORECASE | re.DOTALL,
+    _LETTER_CHARS = (
+        "A-Za-z"
+        "ĄĆĘŁŃÓŚŹŻ"
+        "ąćęłńóśźż"
+    )
+
+    _NAME_CHARS = (
+        "A-Za-z"
+        "ĄĆĘŁŃÓŚŹŻ"
+        "ąćęłńóśźż"
+        "0-9"
+        "_\\-+&'\"„”().,/"
+    )
+
+    def __init__(self):
+        super().__init__(
+            supported_entities=["ORGANIZATION"],
+            supported_language="pl",
+            name="OrganizationRecognizer",
         )
 
-    def analyze(self, text: str, entities: List[str], nlp_artifacts=None):
-        results = []
-        for m in self._form_pattern.finditer(text):
-            results.append(RecognizerResult("ORGANIZATION", m.start(), m.end(), 0.92))
-        return results
+        self.legal_forms = _load_legal_forms()
 
+        sorted_forms = sorted(
+            self.legal_forms,
+            key=len,
+            reverse=True,
+        )
+
+        escaped_forms = [
+            re.escape(form).replace(
+                r"\ ",
+                r"[ \t\r\n]+",
+            )
+            for form in sorted_forms
+        ]
+
+        forms_pattern = "|".join(
+            escaped_forms
+        )
+
+        if not forms_pattern:
+            self._form_pattern = None
+            return
+
+        line_pattern = (
+            rf"[{self._LETTER_CHARS}0-9]"
+            rf"[{self._NAME_CHARS} \t]{{1,120}}?"
+        )
+
+        self._form_pattern = re.compile(
+            rf"(?<![{self._LETTER_CHARS}0-9])"
+
+            rf"("
+            rf"{line_pattern}"
+            rf"(?:"
+            rf"[ \t]*\r?\n[ \t]*"
+            rf"{line_pattern}"
+            rf")?"
+            rf")"
+
+            rf"[ \t\r\n]+"
+
+            rf"("
+            rf"{forms_pattern}"
+            rf")"
+
+            rf"(?![{self._LETTER_CHARS}0-9])",
+
+            re.IGNORECASE,
+        )
+
+    def analyze(
+        self,
+        text: str,
+        entities: List[str],
+        nlp_artifacts=None,
+    ):
+        results = []
+
+        if not self._form_pattern:
+            return results
+
+        for match in self._form_pattern.finditer(
+            text
+        ):
+            results.append(
+                RecognizerResult(
+                    "ORGANIZATION",
+                    match.start(),
+                    match.end(),
+                    0.92,
+                )
+            )
+
+        return results
 
 # ---------------------------------------------------------------------------
 # 11. Recognizer Adresu
@@ -1028,24 +1185,151 @@ class EmailRecognizer(EntityRecognizer):
 # 13. Recognizer Osób
 # ---------------------------------------------------------------------------
 class PersonDictionaryRecognizer(EntityRecognizer):
-    _CANDIDATE = re.compile(r"\b([A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+(?:[\s\r\n\-]+[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+){1,3})\b")
+    _TOKEN_PATTERN = (
+        r"[A-ZĄĆĘŁŃÓŚŹŻ]"
+        r"[A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż']+"
+        r"(?:-[A-ZĄĆĘŁŃÓŚŹŻ]"
+        r"[A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż']+)*"
+    )
+
+    _CANDIDATE = re.compile(
+        rf"\b("
+        rf"{_TOKEN_PATTERN}"
+        rf"(?:[ \t\u00A0]+{_TOKEN_PATTERN}){{1,3}}"
+        rf")\b"
+    )
 
     def __init__(self):
-        super().__init__(supported_entities=["PERSON"], supported_language="pl", name="PersonDictionaryRecognizer")
-        self.first_names = _load_name_set("first_names.csv")
-        self.surnames = _load_name_set("surnames.csv")
+        super().__init__(
+            supported_entities=["PERSON"],
+            supported_language="pl",
+            name="PersonDictionaryRecognizer",
+        )
 
-    def analyze(self, text: str, entities: List[str], nlp_artifacts=None):
+        self.first_names = _load_name_set(
+            "first_names.csv"
+        )
+
+        self.surnames = _load_name_set(
+            "surnames.csv"
+        )
+
+    def analyze(
+        self,
+        text: str,
+        entities: List[str],
+        nlp_artifacts=None,
+    ):
         results = []
-        if not self.first_names or not self.surnames:
+
+        if (
+            not text
+            or not self.first_names
+            or not self.surnames
+        ):
             return results
-        for m in self._CANDIDATE.finditer(text):
-            parts = re.split(r"[\s\r\n\-]+", m.group(1))
-            if parts[0].upper() not in self.first_names:
+
+        line_offset = 0
+
+        for line in text.splitlines(
+            keepends=True
+        ):
+            visible_line = line.rstrip(
+                "\r\n"
+            )
+
+            if not visible_line:
+                line_offset += len(line)
                 continue
-            if parts[-1].upper() not in self.surnames:
-                continue
-            results.append(RecognizerResult("PERSON", m.start(), m.end(), 0.70))
+
+            token_regex = re.compile(
+                self._TOKEN_PATTERN
+            )
+
+            tokens = list(
+                token_regex.finditer(
+                    visible_line
+                )
+            )
+
+            for start_idx, first_match in enumerate(
+                tokens
+            ):
+                first_name = (
+                    first_match
+                    .group(0)
+                    .upper()
+                )
+
+                if first_name not in self.first_names:
+                    continue
+
+                max_end_idx = min(
+                    start_idx + 3,
+                    len(tokens) - 1,
+                )
+
+                for end_idx in range(
+                    max_end_idx,
+                    start_idx,
+                    -1,
+                ):
+                    last_match = tokens[
+                        end_idx
+                    ]
+
+                    surname = (
+                        last_match
+                        .group(0)
+                        .upper()
+                    )
+
+                    if surname not in self.surnames:
+                        continue
+
+                    candidate_start = (
+                        first_match.start()
+                    )
+
+                    candidate_end = (
+                        last_match.end()
+                    )
+
+                    candidate = visible_line[
+                        candidate_start:
+                        candidate_end
+                    ]
+
+                    # ------------------------------------------------
+                    # Sprawdzamy, czy pomiedzy tokenami sa tylko
+                    # dozwolone separatory.
+                    #
+                    # Chroni przed przypadkowym laczeniem slow
+                    # rozdzielonych przecinkiem, dwukropkiem itd.
+                    # ------------------------------------------------
+
+                    if not self._CANDIDATE.fullmatch(
+                        candidate
+                    ):
+                        continue
+
+                    results.append(
+                        RecognizerResult(
+                            "PERSON",
+                            line_offset
+                            + candidate_start,
+                            line_offset
+                            + candidate_end,
+                            0.70,
+                        )
+                    )
+
+                    # Dla danego imienia znalezlismy najlepszy
+                    # poprawny zakres.
+                    break
+
+            line_offset += len(line)
+
         return results
 
 
