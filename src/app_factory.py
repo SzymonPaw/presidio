@@ -155,6 +155,9 @@ def _register_routes(app: Flask) -> None:
     from src.documents.docx_adapter import DocxAdapter
     from src.documents.xlsx_adapter import XlsxAdapter
     from src.anonymization.service import AnonymizationService
+    from src.documents.metadata_sanitizer import (
+        sanitize_document_metadata,
+    )
 
     pdf_adapter = PdfAdapter()
     docx_adapter = DocxAdapter()
@@ -378,25 +381,68 @@ def _register_routes(app: Flask) -> None:
             confirmed_findings = [f for f in findings if f["id"] in confirmed_ids]
 
             file_ext = file.filename.lower()
-            if file_ext.endswith(".pdf"):
-                out_bytes = pdf_adapter.anonymize(file_bytes, confirmed_findings)
-                mimetype = "application/pdf"
-            elif file_ext.endswith(".docx"):
-                out_bytes = docx_adapter.anonymize(file_bytes, confirmed_findings)
-                mimetype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            elif file_ext.endswith(".xlsx"):
-                out_bytes = xlsx_adapter.anonymize(file_bytes, confirmed_findings)
-                mimetype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            else:
-                return jsonify({"error": "Nieobsługiwany format"}), 400
 
-            out_io = io.BytesIO(out_bytes)
+            if file_ext.endswith(".pdf"):
+                out_bytes = pdf_adapter.anonymize(
+                    file_bytes,
+                    confirmed_findings,
+                )
+
+                mimetype = "application/pdf"
+
+            elif file_ext.endswith(".docx"):
+                out_bytes = docx_adapter.anonymize(
+                    file_bytes,
+                    confirmed_findings,
+                )
+
+                mimetype = (
+                    "application/vnd.openxmlformats-"
+                    "officedocument.wordprocessingml.document"
+                )
+
+            elif file_ext.endswith(".xlsx"):
+                out_bytes = xlsx_adapter.anonymize(
+                    file_bytes,
+                    confirmed_findings,
+                )
+
+                mimetype = (
+                    "application/vnd.openxmlformats-"
+                    "officedocument.spreadsheetml.sheet"
+                )
+
+            else:
+                return jsonify({
+                    "error": "Nieobsługiwany format"
+                }), 400
+
+
+            # -------------------------------------------------------
+            # Finalne czyszczenie metadanych.
+            #
+            # Celowo jest tutaj, a nie osobno w kazdym adapterze.
+            # Kazdy obslugiwany format przechodzi przez ten sam
+            # koncowy etap przed zwroceniem pliku.
+            # -------------------------------------------------------
+
+            out_bytes = sanitize_document_metadata(
+                out_bytes,
+                file.filename,
+            )
+
+
+            out_io = io.BytesIO(
+                out_bytes
+            )
+
             return send_file(
                 out_io,
                 mimetype=mimetype,
                 as_attachment=True,
-                download_name=file.filename
+                download_name=file.filename,
             )
+            
         except Exception as exc:
             return jsonify({"error": f"Blad podczas anonimizacji: {str(exc)}"}), 500
 
