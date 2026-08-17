@@ -269,12 +269,63 @@ def _register_routes(app: Flask) -> None:
         # Nadajemy identyfikatory.
         result = []
 
-        for idx, value in enumerate(
-            grouped.values(),
+        for idx, (key, value) in enumerate(
+            grouped.items(),
             start=1,
         ):
             value["id"] = str(idx)
             result.append(value)
+
+        # ---------------------------------------------------
+        # PDF: podpis cyfrowy jako finding dokumentowy.
+        #
+        # Nie jest to finding tekstowy Presidio.
+        # Trafia jednak do tego samego pipeline:
+        #
+        # analiza -> checkbox -> confirmed_ids -> anonymize
+        # ---------------------------------------------------
+
+        if filename.lower().endswith(
+            ".pdf"
+        ):
+            signatures = (
+                pdf_adapter.detect_digital_signatures(
+                    file_bytes
+                )
+            )
+
+            if signatures:
+                first_signature = signatures[0]
+
+                result.append(
+                    {
+                        "id": str(
+                            len(result) + 1
+                        ),
+                        "entity_type": "PDF_SIGNATURE",
+                        "marker": "PODPIS CYFROWY",
+                        "score": 1.0,
+                        "reason": (
+                            "Wykryto podpis cyfrowy "
+                            "w strukturze dokumentu PDF."
+                        ),
+                        # Techniczny identyfikator.
+                        # Nie jest wyszukiwany w tekscie PDF.
+                        "raw_value": "__PDF_SIGNATURES__",
+                        "page": first_signature[
+                            "page"
+                        ],
+                        "bbox": first_signature[
+                            "bbox"
+                        ],
+                        "count": len(
+                            signatures
+                        ),
+                        "document_action": (
+                            "remove_pdf_signatures"
+                        ),
+                    }
+                )
 
         return result
 

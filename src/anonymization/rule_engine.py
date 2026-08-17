@@ -664,6 +664,7 @@ class AddressRecognizer(EntityRecognizer):
     _PREFIX = (
         r"(?:"
         r"ul\.?"
+        r"Adres siedziby\.?"
         r"|al\.?"
         r"|aleja"
         r"|aleje"
@@ -721,6 +722,19 @@ class AddressRecognizer(EntityRecognizer):
         rf"(?P<street>"
         rf"{_PREFIX}"
         rf"{_WS}"
+        rf"{_STREET_NAME}"
+        rf"{_WS}"
+        rf"{_BUILDING}"
+        rf"{_UNIT}"
+        rf")"
+        rf"(?![\w/])",
+        re.IGNORECASE,
+    )
+
+    _PATTERN_STREET_AFTER_SEAT_ADDRESS = re.compile(
+        rf"adres[ \t]+siedziby"
+        rf"[ \t]*:[ \t\r\n]*"
+        rf"(?P<street>"
         rf"{_STREET_NAME}"
         rf"{_WS}"
         rf"{_BUILDING}"
@@ -860,6 +874,20 @@ class AddressRecognizer(EntityRecognizer):
             )
             for match in self._PATTERN_STREET.finditer(text)
         ]
+
+        street_spans.extend(
+            (
+                match.start("street"),
+                match.end("street"),
+            )
+            for match in self._PATTERN_STREET_AFTER_SEAT_ADDRESS.finditer(
+                text
+            )
+        )
+
+        street_spans = sorted(
+            set(street_spans)
+        )
 
         postal_spans = self._postal_spans(text)
 
