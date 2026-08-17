@@ -1,6 +1,7 @@
 """Fabryka aplikacji Flask z walidacja slownikow przy starcie."""
 import sys
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 from flask import Flask
@@ -144,6 +145,23 @@ def create_app() -> Flask:
 
     return app
 
+def _build_anonymized_filename(
+    original_filename: str,
+) -> str:
+
+    suffix = Path(
+        original_filename
+    ).suffix.lower()
+
+    now = datetime.now()
+
+    timestamp = now.strftime(
+        "%d-%m_%H-%M"
+    )
+
+    return (
+        f"anonimizacja_{timestamp}{suffix}"
+    )
 
 def _register_routes(app: Flask) -> None:
     """Rejestruje podstawowe trasy."""
@@ -436,11 +454,15 @@ def _register_routes(app: Flask) -> None:
                 out_bytes
             )
 
+            output_filename = _build_anonymized_filename(
+                file.filename
+            )
+
             return send_file(
                 out_io,
                 mimetype=mimetype,
                 as_attachment=True,
-                download_name=file.filename,
+                download_name=output_filename,
             )
             
         except Exception as exc:
