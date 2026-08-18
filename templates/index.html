@@ -6,23 +6,66 @@
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta name="robots" content="noindex">
+
     <title>Anonimizator dokumentów | STBU.pl</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
-    <link rel="shortcut icon" href="/static/img/favicon.webp" type="image/x-icon">
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='vendor/pdfjs/web/pdf_viewer.css') }}"
+    >
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/app.css') }}"
+    >
+
+    <link
+        rel="shortcut icon"
+        href="/static/img/favicon.webp"
+        type="image/x-icon"
+    >
 </head>
+
 <body>
     <div class="container">
         <h1>Anonimizator dokumentów | STBU</h1>
-        <h2>Po zakończeniu procesu usuwania wrażliwych danych, sprawdź efekt działania narzędzia!</h2>
-        <p class="subtitle">Lokalne narzędzie do anonimizacji danych w dokumentach</p>
+
+        <h2>
+            Po zakończeniu procesu usuwania wrażliwych danych,
+            sprawdź efekt działania narzędzia!
+        </h2>
+
+        <p class="subtitle">
+            Lokalne narzędzie do anonimizacji danych w dokumentach
+        </p>
 
         <form id="upload-form" class="upload-form">
             <label for="file-input" class="file-label">
-                <span>Wybierz plik (PDF, DOCX, XLSX) lub przeciągnij tutaj</span>
-                <input type="file" id="file-input" name="file" class="file-input" accept=".pdf,.docx,.xlsx" hidden>
+                <span>
+                    Wybierz plik (PDF, DOCX, XLSX)
+                    lub przeciągnij tutaj
+                </span>
+
+                <input
+                    type="file"
+                    id="file-input"
+                    name="file"
+                    class="file-input"
+                    accept=".pdf,.docx,.xlsx"
+                    hidden
+                >
             </label>
+
             <div id="file-info" class="file-info"></div>
-            <button type="submit" id="analyze-btn" class="btn btn-primary" disabled>Analizuj</button>
+
+            <button
+                type="submit"
+                id="analyze-btn"
+                class="btn btn-primary"
+                disabled
+            >
+                Analizuj
+            </button>
         </form>
 
         <div id="status" class="status"></div>
@@ -30,17 +73,154 @@
         <div id="result" class="result"></div>
     </div>
 
-    <!-- Modal podglądu -->
-    <div id="preview-modal" class="modal" style="display:none;">
-        <div class="modal-content">
-            <span class="close-btn">&times;</span>
-            <h2>Podgląd dokumentu (strona <span id="preview-page-num">0</span>)</h2>
-            <div class="modal-body">
-                <img id="preview-image" src="" alt="Podgląd strony PDF">
+    <!-- =========================================================
+         PDF.js - pełny podgląd dokumentu
+         ========================================================= -->
+    <div
+        id="preview-modal"
+        class="modal"
+        style="display:none;"
+        aria-hidden="true"
+    >
+        <div class="pdf-preview-shell">
+
+            <div class="pdf-preview-toolbar">
+
+                <div class="pdf-preview-title">
+                    <strong>Podgląd dokumentu PDF</strong>
+
+                    <span class="pdf-page-indicator">
+                        Strona
+                        <span id="pdf-current-page">1</span>
+                        /
+                        <span id="pdf-page-count">0</span>
+                    </span>
+                </div>
+
+                <div
+                    class="pdf-preview-mode"
+                    role="group"
+                    aria-label="Tryb podglądu"
+                >
+                    <button
+                        type="button"
+                        id="preview-mode-detections"
+                        class="pdf-mode-btn is-active"
+                    >
+                        Wykrycia
+                    </button>
+
+                    <button
+                        type="button"
+                        id="preview-mode-output"
+                        class="pdf-mode-btn"
+                    >
+                        Po anonimizacji
+                    </button>
+                </div>
+
+                <div class="pdf-search">
+                    <input
+                        type="text"
+                        id="pdf-search-input"
+                        placeholder="Szukaj w PDF..."
+                        autocomplete="off"
+                    >
+
+                    <button
+                        type="button"
+                        id="pdf-search-prev"
+                        class="btn btn-secondary btn-sm"
+                        title="Poprzedni wynik"
+                    >
+                        ↑
+                    </button>
+
+                    <button
+                        type="button"
+                        id="pdf-search-next"
+                        class="btn btn-secondary btn-sm"
+                        title="Następny wynik"
+                    >
+                        ↓
+                    </button>
+                </div>
+
+                <div class="pdf-zoom-controls">
+                    <button
+                        type="button"
+                        id="pdf-zoom-out"
+                        class="btn btn-secondary btn-sm"
+                        title="Pomniejsz"
+                    >
+                        −
+                    </button>
+
+                    <span id="pdf-zoom-value">100%</span>
+
+                    <button
+                        type="button"
+                        id="pdf-zoom-in"
+                        class="btn btn-secondary btn-sm"
+                        title="Powiększ"
+                    >
+                        +
+                    </button>
+
+                    <button
+                        type="button"
+                        id="pdf-zoom-fit"
+                        class="btn btn-secondary btn-sm"
+                    >
+                        Dopasuj
+                    </button>
+                </div>
+
+                <button
+                    type="button"
+                    class="close-btn"
+                    aria-label="Zamknij podgląd"
+                    title="Zamknij"
+                >
+                    &times;
+                </button>
+            </div>
+
+            <div class="pdf-preview-layout">
+
+                <div class="pdf-viewer-pane">
+                    <div
+                        id="pdf-viewer-container"
+                        tabindex="0"
+                    >
+                        <div
+                            id="pdf-viewer"
+                            class="pdfViewer"
+                        ></div>
+                    </div>
+                </div>
+
+                <aside class="pdf-findings-sidebar">
+
+                    <div class="pdf-findings-sidebar-header">
+                        <strong>Wykryte dane</strong>
+
+                        <span>
+                            Kliknij element, aby przejść
+                            do jego wystąpienia.
+                        </span>
+                    </div>
+
+                    <div id="pdf-findings-list"></div>
+
+                </aside>
             </div>
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script
+        type="module"
+        src="{{ url_for('static', filename='js/app.js') }}"
+    ></script>
 </body>
 </html>

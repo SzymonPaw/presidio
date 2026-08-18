@@ -1,3 +1,18 @@
+import * as pdfjsLib from
+    '/static/vendor/pdfjs/build/pdf.mjs';
+
+import {
+    EventBus,
+    PDFLinkService,
+    PDFFindController,
+    PDFViewer
+} from
+    '/static/vendor/pdfjs/web/pdf_viewer.mjs';
+
+
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+    '/static/vendor/pdfjs/build/pdf.worker.mjs';
+
 /* app.js - frontend dla anonimizatora z podglądem PDF */
 (function () {
     'use strict';
@@ -10,11 +25,107 @@
     var statusDiv = document.getElementById('status');
     var findingsDiv = document.getElementById('findings');
 
-    // Modal elements
-    var modal = document.getElementById('preview-modal');
-    var modalCloseBtn = document.querySelector('.close-btn');
+    var modal =
+        document.getElementById(
+            'preview-modal'
+        );
+
+    var modalCloseBtn =
+        document.querySelector(
+            '.close-btn'
+        );
+
+    var pdfViewerContainer =
+        document.getElementById(
+            'pdf-viewer-container'
+        );
+
+    var pdfViewerElement =
+        document.getElementById(
+            'pdf-viewer'
+        );
+
+    var pdfFindingsList =
+        document.getElementById(
+            'pdf-findings-list'
+        );
+
+    var pdfCurrentPage =
+        document.getElementById(
+            'pdf-current-page'
+        );
+
+    var pdfPageCount =
+        document.getElementById(
+            'pdf-page-count'
+        );
+
+    var pdfZoomInBtn =
+        document.getElementById(
+            'pdf-zoom-in'
+        );
+
+    var pdfZoomOutBtn =
+        document.getElementById(
+            'pdf-zoom-out'
+        );
+
+    var pdfZoomFitBtn =
+        document.getElementById(
+            'pdf-zoom-fit'
+        );
+
+    var pdfZoomValue =
+        document.getElementById(
+            'pdf-zoom-value'
+        );
+
+    var pdfSearchInput =
+        document.getElementById(
+            'pdf-search-input'
+        );
+
+    var pdfSearchPrev =
+        document.getElementById(
+            'pdf-search-prev'
+        );
+
+    var pdfSearchNext =
+        document.getElementById(
+            'pdf-search-next'
+        );
+
+    var previewModeDetectionsBtn =
+        document.getElementById(
+            'preview-mode-detections'
+        );
+
+    var previewModeOutputBtn =
+        document.getElementById(
+            'preview-mode-output'
+        );
+
 
     var selectedFile = null;
+
+    var currentFindings = [];
+
+
+    var pdfPreviewState = {
+        loadingTask: null,
+        pdfDocument: null,
+        viewer: null,
+        eventBus: null,
+        linkService: null,
+        findController: null,
+
+        selectedFindingId: null,
+        occurrenceIndex: {},
+
+        loadedFile: null,
+
+        previewMode: 'detections'
+    };
 
     // Drag and drop
     if (fileLabel) {
@@ -45,8 +156,23 @@
     }
 
     function handleFile(file) {
+        resetPdfPreview();
+
+        currentFindings = [];
+
         selectedFile = file;
-        fileInfo.textContent = 'Wybrany plik: ' + file.name + ' (' + formatSize(file.size) + ')';
+
+        findingsDiv.innerHTML = '';
+
+        statusDiv.textContent = '';
+
+        fileInfo.textContent =
+            'Wybrany plik: '
+            + file.name
+            + ' ('
+            + formatSize(file.size)
+            + ')';
+
         analyzeBtn.disabled = false;
     }
 
@@ -88,8 +214,11 @@
     }
 
     function renderFindings(findings) {
-        if (!findings || findings.length === 0) {
-            findingsDiv.innerHTML = '<p>Nie wykryto żadnych danych do anonimizacji.</p>';
+        currentFindings =
+            findings || [];
+
+        if (currentFindings.length === 0) {
+            findingsDiv.innerHTML = '<p>Brak wykrytych danych.</p>';
             return;
         }
 
@@ -105,7 +234,7 @@
         }
         html += '</tr></thead><tbody>';
 
-        findings.forEach(function (f) {
+        currentFindings.forEach(function (f) {
             html += '<tr>';
             html += '<td>' + escapeHtml(f.entity_type) + '</td>';
             html += '<td>' + escapeHtml(f.marker) + '</td>';
@@ -115,8 +244,15 @@
             html += '<td><div class="checkbox-wrapper-6"><input class="tgl tgl-light" id="cb1-6-' + f.id + '" type="checkbox" name="anonymize" value="' + f.id + '" checked><label class="tgl-btn" for="cb1-6-' + f.id + '"></label></div></td>';
             if (isPdf) {
                 // Jeśli PDF, dajemy przycisk Pokaż z podanym numerem strony
-                var pageNum = typeof f.page !== 'undefined' ? f.page : 0;
-                html += '<td><button type="button" class="btn btn-secondary btn-sm preview-btn" data-page="' + pageNum + '"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><!--!Font Awesome Free v7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2026 Fonticons, Inc.--><path d="M320 144C254.8 144 201.2 173.6 160.1 211.7C121.6 247.5 95 290 81.4 320C95 350 121.6 392.5 160.1 428.3C201.2 466.4 254.8 496 320 496C385.2 496 438.8 466.4 479.9 428.3C518.4 392.5 545 350 558.6 320C545 290 518.4 247.5 479.9 211.7C438.8 173.6 385.2 144 320 144zM127.4 176.6C174.5 132.8 239.2 96 320 96C400.8 96 465.5 132.8 512.6 176.6C559.4 220.1 590.7 272 605.6 307.7C608.9 315.6 608.9 324.4 605.6 332.3C590.7 368 559.4 420 512.6 463.4C465.5 507.1 400.8 544 320 544C239.2 544 174.5 507.2 127.4 463.4C80.6 419.9 49.3 368 34.4 332.3C31.1 324.4 31.1 315.6 34.4 307.7C49.3 272 80.6 220 127.4 176.6zM320 400C364.2 400 400 364.2 400 320C400 290.4 383.9 264.5 360 250.7C358.6 310.4 310.4 358.6 250.7 360C264.5 383.9 290.4 400 320 400zM240.4 311.6C242.9 311.9 245.4 312 248 312C283.3 312 312 283.3 312 248C312 245.4 311.8 242.9 311.6 240.4C274.2 244.3 244.4 274.1 240.5 311.5zM286 196.6C296.8 193.6 308.2 192.1 319.9 192.1C328.7 192.1 337.4 193 345.7 194.7C346 194.8 346.2 194.8 346.5 194.9C404.4 207.1 447.9 258.6 447.9 320.1C447.9 390.8 390.6 448.1 319.9 448.1C258.3 448.1 206.9 404.6 194.7 346.7C192.9 338.1 191.9 329.2 191.9 320.1C191.9 309.1 193.3 298.3 195.9 288.1C196.1 287.4 196.2 286.8 196.4 286.2C208.3 242.8 242.5 208.6 285.9 196.7z"/></svg> Pokaż</button></td>';
+                html +=
+                    '<td>'
+                    + '<button '
+                    + 'type="button" '
+                    + 'class="btn btn-secondary btn-sm preview-btn" '
+                    + 'data-finding-id="' + f.id + '">'
+                    + 'Pokaż'
+                    + '</button>'
+                    + '</td>';
             }
             html += '</tr>';
         });
@@ -130,6 +266,23 @@
         }
         html += '</div>';
         findingsDiv.innerHTML = html;
+
+        var mainCheckboxes =
+            findingsDiv.querySelectorAll(
+                'input[name="anonymize"]'
+            );
+
+        mainCheckboxes.forEach(
+            function (checkbox) {
+                checkbox.addEventListener(
+                    'change',
+                    function () {
+                        renderPdfFindingsSidebar();
+                        refreshPdfOverlayState();
+                    }
+                );
+            }
+        );
 
         // Event listener dla Zatwierdź
         var confirmBtn = document.getElementById('confirm-btn');
@@ -356,9 +509,1672 @@
         }
     });
 
+    function isSelectedFilePdf() {
+        return Boolean(
+            selectedFile
+            && /\.pdf$/i.test(
+                selectedFile.name
+            )
+        );
+    }
+
+
+    function getFindingById(
+        findingId
+    ) {
+        return (
+            currentFindings.find(
+                function (finding) {
+                    return (
+                        String(finding.id)
+                        === String(findingId)
+                    );
+                }
+            )
+            || null
+        );
+    }
+
+
+    function getFindingOccurrences(
+        finding
+    ) {
+        if (!finding) {
+            return [];
+        }
+
+        if (
+            Array.isArray(
+                finding.occurrences
+            )
+            && finding.occurrences.length
+        ) {
+            return finding.occurrences;
+        }
+
+        if (
+            typeof finding.page
+            !== 'undefined'
+        ) {
+            return [
+                {
+                    page:
+                        finding.page,
+
+                    bbox:
+                        finding.bbox,
+
+                    pdf_bbox:
+                        finding.pdf_bbox
+                }
+            ];
+        }
+
+        return [];
+    }
+
+
+    function getMainFindingCheckbox(
+        findingId
+    ) {
+        var checkboxes =
+            findingsDiv.querySelectorAll(
+                'input[name="anonymize"]'
+            );
+
+        for (
+            var i = 0;
+            i < checkboxes.length;
+            i++
+        ) {
+            if (
+                String(
+                    checkboxes[i].value
+                )
+                === String(
+                    findingId
+                )
+            ) {
+                return checkboxes[i];
+            }
+        }
+
+        return null;
+    }
+
+
+    function isFindingActive(
+        findingId
+    ) {
+        var checkbox =
+            getMainFindingCheckbox(
+                findingId
+            );
+
+        return Boolean(
+            checkbox
+            && checkbox.checked
+        );
+    }
+
+
+    function setFindingActive(
+        findingId,
+        checked
+    ) {
+        var checkbox =
+            getMainFindingCheckbox(
+                findingId
+            );
+
+        if (!checkbox) {
+            return;
+        }
+
+        checkbox.checked =
+            Boolean(
+                checked
+            );
+
+        checkbox.dispatchEvent(
+            new Event(
+                'change',
+                {
+                    bubbles: true
+                }
+            )
+        );
+    }
+
+
+    // =========================================================
+    // Reset PDF
+    // =========================================================
+
+    function resetPdfPreview() {
+
+        if (
+            pdfPreviewState.loadingTask
+        ) {
+            try {
+                pdfPreviewState
+                    .loadingTask
+                    .destroy();
+            } catch (error) {
+                console.debug(
+                    error
+                );
+            }
+        }
+
+        if (
+            pdfPreviewState.pdfDocument
+        ) {
+            try {
+                pdfPreviewState
+                    .pdfDocument
+                    .destroy();
+            } catch (error) {
+                console.debug(
+                    error
+                );
+            }
+        }
+
+
+        pdfPreviewState = {
+            loadingTask: null,
+            pdfDocument: null,
+            viewer: null,
+            eventBus: null,
+            linkService: null,
+            findController: null,
+
+            selectedFindingId: null,
+            occurrenceIndex: {},
+
+            loadedFile: null,
+
+            previewMode: 'detections'
+        };
+
+
+        if (pdfViewerElement) {
+            pdfViewerElement.innerHTML =
+                '';
+        }
+
+        if (pdfFindingsList) {
+            pdfFindingsList.innerHTML =
+                '';
+        }
+
+        if (pdfCurrentPage) {
+            pdfCurrentPage.textContent =
+                '1';
+        }
+
+        if (pdfPageCount) {
+            pdfPageCount.textContent =
+                '0';
+        }
+
+
+        setPreviewMode(
+            'detections'
+        );
+    }
+
+
+    // =========================================================
+    // Ładowanie całego PDF
+    // =========================================================
+
+    async function ensurePdfPreviewLoaded() {
+
+        if (
+            pdfPreviewState.viewer
+            && pdfPreviewState.loadedFile
+                === selectedFile
+        ) {
+            return;
+        }
+
+
+        if (
+            !selectedFile
+            || !isSelectedFilePdf()
+        ) {
+            throw new Error(
+                'Brak wybranego PDF.'
+            );
+        }
+
+
+        resetPdfPreview();
+
+
+        var eventBus =
+            new EventBus();
+
+
+        var linkService =
+            new PDFLinkService({
+                eventBus: eventBus
+            });
+
+
+        var findController =
+            new PDFFindController({
+                eventBus: eventBus,
+                linkService: linkService
+            });
+
+
+        var viewer =
+            new PDFViewer({
+                container:
+                    pdfViewerContainer,
+
+                eventBus:
+                    eventBus,
+
+                linkService:
+                    linkService,
+
+                findController:
+                    findController
+            });
+
+
+        linkService.setViewer(
+            viewer
+        );
+
+
+        pdfPreviewState.eventBus =
+            eventBus;
+
+        pdfPreviewState.linkService =
+            linkService;
+
+        pdfPreviewState.findController =
+            findController;
+
+        pdfPreviewState.viewer =
+            viewer;
+
+        pdfPreviewState.loadedFile =
+            selectedFile;
+
+
+        // PDF gotowy - pokazujemy wszystkie strony.
+        eventBus.on(
+            'pagesinit',
+            function () {
+
+                viewer.currentScaleValue =
+                    'page-width';
+
+
+                if (
+                    pdfPageCount
+                    && pdfPreviewState.pdfDocument
+                ) {
+                    pdfPageCount.textContent =
+                        String(
+                            pdfPreviewState
+                                .pdfDocument
+                                .numPages
+                        );
+                }
+
+
+                updatePdfZoomValue();
+
+                renderPdfFindingsSidebar();
+            }
+        );
+
+
+        // Każda wyrenderowana strona dostaje
+        // osobną warstwę Presidio.
+        eventBus.on(
+            'pagerendered',
+            function (event) {
+
+                renderPdfOverlayForPage(
+                    event.pageNumber - 1
+                );
+
+                scrollToSelectedPdfBox();
+            }
+        );
+
+
+        eventBus.on(
+            'pagechanging',
+            function (event) {
+
+                if (pdfCurrentPage) {
+                    pdfCurrentPage.textContent =
+                        String(
+                            event.pageNumber
+                        );
+                }
+            }
+        );
+
+
+        eventBus.on(
+            'scalechanging',
+            function () {
+                updatePdfZoomValue();
+            }
+        );
+
+
+        // Plik NIE jest wysyłany do żadnego CDN/API.
+        // PDF.js dostaje bezpośrednio lokalne bajty File.
+        var pdfBytes =
+            new Uint8Array(
+                await selectedFile
+                    .arrayBuffer()
+            );
+
+
+        var loadingTask =
+            pdfjsLib.getDocument({
+                data:
+                    pdfBytes,
+
+                cMapUrl:
+                    '/static/vendor/pdfjs/web/cmaps/',
+
+                cMapPacked:
+                    true,
+
+                standardFontDataUrl:
+                    '/static/vendor/pdfjs/web/standard_fonts/',
+
+                wasmUrl:
+                    '/static/vendor/pdfjs/web/wasm/'
+            });
+
+
+        pdfPreviewState.loadingTask =
+            loadingTask;
+
+
+        var pdfDocument =
+            await loadingTask.promise;
+
+
+        pdfPreviewState.pdfDocument =
+            pdfDocument;
+
+
+        viewer.setDocument(
+            pdfDocument
+        );
+
+
+        linkService.setDocument(
+            pdfDocument,
+            null
+        );
+    }
+
+
+    // =========================================================
+    // Otwieranie / zamykanie
+    // =========================================================
+
+    async function openPdfPreview(
+        findingId
+    ) {
+
+        if (!isSelectedFilePdf()) {
+            return;
+        }
+
+
+        modal.style.display =
+            'flex';
+
+        modal.setAttribute(
+            'aria-hidden',
+            'false'
+        );
+
+
+        statusDiv.textContent =
+            'Ładowanie podglądu PDF...';
+
+
+        try {
+
+            await ensurePdfPreviewLoaded();
+
+
+            renderPdfFindingsSidebar();
+
+
+            if (findingId) {
+                focusPdfFinding(
+                    findingId
+                );
+            }
+
+
+            statusDiv.textContent =
+                '';
+
+        } catch (error) {
+
+            statusDiv.textContent =
+                'Błąd podglądu PDF.';
+
+            console.error(
+                error
+            );
+        }
+    }
+
+
+    function closePdfPreview() {
+
+        modal.style.display =
+            'none';
+
+        modal.setAttribute(
+            'aria-hidden',
+            'true'
+        );
+    }
+
+
+    // =========================================================
+    // Overlay Presidio
+    // =========================================================
+
+    function renderPdfOverlayForPage(
+        pageIndex
+    ) {
+
+        if (
+            !pdfPreviewState.viewer
+        ) {
+            return;
+        }
+
+
+        var pageView =
+            pdfPreviewState.viewer
+                .getPageView(
+                    pageIndex
+                );
+
+
+        if (
+            !pageView
+            || !pageView.div
+            || !pageView.viewport
+        ) {
+            return;
+        }
+
+
+        var oldLayer =
+            pageView.div.querySelector(
+                '.pii-overlay-layer'
+            );
+
+
+        if (oldLayer) {
+            oldLayer.remove();
+        }
+
+
+        var layer =
+            document.createElement(
+                'div'
+            );
+
+        layer.className =
+            'pii-overlay-layer';
+
+
+        currentFindings.forEach(
+            function (finding) {
+
+                var occurrences =
+                    getFindingOccurrences(
+                        finding
+                    );
+
+
+                occurrences.forEach(
+                    function (
+                        occurrence,
+                        occurrenceIndex
+                    ) {
+
+                        if (
+                            Number(
+                                occurrence.page
+                            )
+                            !== pageIndex
+                        ) {
+                            return;
+                        }
+
+
+                        if (
+                            !Array.isArray(
+                                occurrence.pdf_bbox
+                            )
+                            || occurrence
+                                .pdf_bbox
+                                .length !== 4
+                        ) {
+                            return;
+                        }
+
+
+                        var rectangle =
+                            pageView.viewport
+                                .convertToViewportRectangle(
+                                    occurrence
+                                        .pdf_bbox
+                                );
+
+
+                        var left =
+                            Math.min(
+                                rectangle[0],
+                                rectangle[2]
+                            );
+
+                        var top =
+                            Math.min(
+                                rectangle[1],
+                                rectangle[3]
+                            );
+
+                        var width =
+                            Math.abs(
+                                rectangle[2]
+                                - rectangle[0]
+                            );
+
+                        var height =
+                            Math.abs(
+                                rectangle[3]
+                                - rectangle[1]
+                            );
+
+
+                        var box =
+                            document.createElement(
+                                'div'
+                            );
+
+
+                        box.className =
+                            'pii-overlay-box';
+
+
+                        box.dataset.findingId =
+                            String(
+                                finding.id
+                            );
+
+
+                        box.dataset.occurrenceIndex =
+                            String(
+                                occurrenceIndex
+                            );
+
+
+                        box.style.left =
+                            left + 'px';
+
+                        box.style.top =
+                            top + 'px';
+
+                        box.style.width =
+                            width + 'px';
+
+                        box.style.height =
+                            height + 'px';
+
+
+                        layer.appendChild(
+                            box
+                        );
+                    }
+                );
+            }
+        );
+
+
+        pageView.div.appendChild(
+            layer
+        );
+
+
+        refreshPdfOverlayState();
+    }
+
+
+    function refreshPdfOverlayState() {
+
+        if (!pdfViewerElement) {
+            return;
+        }
+
+
+        var boxes =
+            pdfViewerElement.querySelectorAll(
+                '.pii-overlay-box'
+            );
+
+
+        boxes.forEach(
+            function (box) {
+
+                var findingId =
+                    box.dataset.findingId;
+
+
+                var finding =
+                    getFindingById(
+                        findingId
+                    );
+
+
+                if (!finding) {
+                    return;
+                }
+
+
+                var active =
+                    isFindingActive(
+                        findingId
+                    );
+
+
+                box.classList.toggle(
+                    'is-hidden',
+                    !active
+                );
+
+
+                var selectedOccurrence =
+                    pdfPreviewState
+                        .occurrenceIndex[
+                            findingId
+                        ] || 0;
+
+
+                var selected =
+                    active
+                    && String(
+                        pdfPreviewState
+                            .selectedFindingId
+                    )
+                    === String(
+                        findingId
+                    )
+                    && Number(
+                        box.dataset
+                            .occurrenceIndex
+                    )
+                    === selectedOccurrence;
+
+
+                box.classList.toggle(
+                    'is-selected',
+                    selected
+                );
+
+
+                var isSignature =
+                    finding.entity_type
+                        === 'PDF_SIGNATURE';
+
+
+                box.classList.toggle(
+                    'is-signature',
+                    isSignature
+                );
+
+
+                var outputMode =
+                    (
+                        pdfPreviewState
+                            .previewMode
+                        === 'output'
+                    )
+                    && !isSignature;
+
+
+                box.classList.toggle(
+                    'is-output-preview',
+                    outputMode
+                );
+
+
+                if (outputMode) {
+
+                    box.textContent =
+                        finding.marker
+                        || '[DANE]';
+
+                } else if (
+                    isSignature
+                ) {
+
+                    box.textContent =
+                        'Podpis cyfrowy';
+
+                } else {
+
+                    box.textContent =
+                        '';
+                }
+            }
+        );
+    }
+
+
+    // =========================================================
+    // Prawy panel findings
+    // =========================================================
+
+    function renderPdfFindingsSidebar() {
+
+        if (!pdfFindingsList) {
+            return;
+        }
+
+
+        var html = '';
+
+
+        currentFindings.forEach(
+            function (finding) {
+
+                var occurrences =
+                    getFindingOccurrences(
+                        finding
+                    );
+
+
+                var current =
+                    pdfPreviewState
+                        .occurrenceIndex[
+                            finding.id
+                        ] || 0;
+
+
+                if (
+                    current
+                    >= occurrences.length
+                ) {
+                    current = 0;
+                }
+
+
+                pdfPreviewState
+                    .occurrenceIndex[
+                        finding.id
+                    ] =
+                    current;
+
+
+                var selected =
+                    String(
+                        pdfPreviewState
+                            .selectedFindingId
+                    )
+                    === String(
+                        finding.id
+                    );
+
+
+                var entityLabel =
+                    finding.entity_type
+                        === 'PDF_SIGNATURE'
+                    ? 'Podpis cyfrowy'
+                    : finding.entity_type;
+
+
+                var value =
+                    finding.entity_type
+                        === 'PDF_SIGNATURE'
+                    ? 'Podpis cyfrowy'
+                    : (
+                        finding.raw_value
+                        || finding.marker
+                        || 'Wykryty element'
+                    );
+
+
+                var sidebarId =
+                    'pdf-side-toggle-'
+                    + String(
+                        finding.id
+                    );
+
+
+                html +=
+                    '<div '
+                    + 'class="pdf-finding-item'
+                    + (
+                        selected
+                        ? ' is-selected'
+                        : ''
+                    )
+                    + '">';
+
+
+                html +=
+                    '<button '
+                    + 'type="button" '
+                    + 'class="pdf-finding-jump" '
+                    + 'data-finding-id="'
+                    + escapeHtml(
+                        String(
+                            finding.id
+                        )
+                    )
+                    + '">';
+
+
+                html +=
+                    '<span class="pdf-finding-type">'
+                    + escapeHtml(
+                        entityLabel || ''
+                    )
+                    + '</span>';
+
+
+                html +=
+                    '<span class="pdf-finding-value">'
+                    + escapeHtml(
+                        value
+                    )
+                    + '</span>';
+
+
+                if (
+                    finding.marker
+                    && finding.entity_type
+                        !== 'PDF_SIGNATURE'
+                ) {
+                    html +=
+                        '<span class="pdf-finding-marker">'
+                        + escapeHtml(
+                            finding.marker
+                        )
+                        + '</span>';
+                }
+
+
+                html +=
+                    '</button>';
+
+
+                html +=
+                    '<div class="pdf-finding-controls">';
+
+
+                html +=
+                    '<button '
+                    + 'type="button" '
+                    + 'class="btn btn-secondary btn-sm '
+                    + 'pdf-occurrence-prev" '
+                    + 'data-finding-id="'
+                    + finding.id
+                    + '"'
+                    + (
+                        occurrences.length < 2
+                        ? ' disabled'
+                        : ''
+                    )
+                    + '>'
+                    + '‹'
+                    + '</button>';
+
+
+                html +=
+                    '<span class="pdf-occurrence-counter">'
+                    + (
+                        occurrences.length
+                        ? current + 1
+                        : 0
+                    )
+                    + ' / '
+                    + occurrences.length
+                    + '</span>';
+
+
+                html +=
+                    '<button '
+                    + 'type="button" '
+                    + 'class="btn btn-secondary btn-sm '
+                    + 'pdf-occurrence-next" '
+                    + 'data-finding-id="'
+                    + finding.id
+                    + '"'
+                    + (
+                        occurrences.length < 2
+                        ? ' disabled'
+                        : ''
+                    )
+                    + '>'
+                    + '›'
+                    + '</button>';
+
+
+                html +=
+                    '<label class="pdf-sidebar-anonymize">';
+
+                html +=
+                    '<span>Anonimizuj</span>';
+
+                html +=
+                    '<div class="checkbox-wrapper-6">';
+
+                html +=
+                    '<input '
+                    + 'class="tgl tgl-light '
+                    + 'pdf-sidebar-toggle" '
+                    + 'id="'
+                    + sidebarId
+                    + '" '
+                    + 'type="checkbox" '
+                    + 'data-finding-id="'
+                    + finding.id
+                    + '" '
+                    + (
+                        isFindingActive(
+                            finding.id
+                        )
+                        ? 'checked'
+                        : ''
+                    )
+                    + '>';
+
+                html +=
+                    '<label '
+                    + 'class="tgl-btn" '
+                    + 'for="'
+                    + sidebarId
+                    + '"></label>';
+
+                html +=
+                    '</div>';
+
+                html +=
+                    '</label>';
+
+                html +=
+                    '</div>';
+
+                html +=
+                    '</div>';
+            }
+        );
+
+
+        pdfFindingsList.innerHTML =
+            html;
+
+
+        var jumpButtons =
+            pdfFindingsList.querySelectorAll(
+                '.pdf-finding-jump'
+            );
+
+
+        jumpButtons.forEach(
+            function (button) {
+
+                button.addEventListener(
+                    'click',
+                    function () {
+
+                        focusPdfFinding(
+                            button.dataset
+                                .findingId
+                        );
+                    }
+                );
+            }
+        );
+
+
+        var toggles =
+            pdfFindingsList.querySelectorAll(
+                '.pdf-sidebar-toggle'
+            );
+
+
+        toggles.forEach(
+            function (checkbox) {
+
+                checkbox.addEventListener(
+                    'change',
+                    function () {
+
+                        setFindingActive(
+                            checkbox.dataset
+                                .findingId,
+
+                            checkbox.checked
+                        );
+                    }
+                );
+            }
+        );
+
+
+        var prevButtons =
+            pdfFindingsList.querySelectorAll(
+                '.pdf-occurrence-prev'
+            );
+
+
+        prevButtons.forEach(
+            function (button) {
+
+                button.addEventListener(
+                    'click',
+                    function () {
+
+                        movePdfOccurrence(
+                            button.dataset
+                                .findingId,
+                            -1
+                        );
+                    }
+                );
+            }
+        );
+
+
+        var nextButtons =
+            pdfFindingsList.querySelectorAll(
+                '.pdf-occurrence-next'
+            );
+
+
+        nextButtons.forEach(
+            function (button) {
+
+                button.addEventListener(
+                    'click',
+                    function () {
+
+                        movePdfOccurrence(
+                            button.dataset
+                                .findingId,
+                            1
+                        );
+                    }
+                );
+            }
+        );
+    }
+
+
+    // =========================================================
+    // Nawigacja po wystąpieniach
+    // =========================================================
+
+    function movePdfOccurrence(
+        findingId,
+        direction
+    ) {
+
+        var finding =
+            getFindingById(
+                findingId
+            );
+
+
+        var occurrences =
+            getFindingOccurrences(
+                finding
+            );
+
+
+        if (!occurrences.length) {
+            return;
+        }
+
+
+        var current =
+            pdfPreviewState
+                .occurrenceIndex[
+                    findingId
+                ] || 0;
+
+
+        current =
+            (
+                current
+                + direction
+                + occurrences.length
+            )
+            % occurrences.length;
+
+
+        pdfPreviewState
+            .occurrenceIndex[
+                findingId
+            ] =
+            current;
+
+
+        focusPdfFinding(
+            findingId
+        );
+    }
+
+
+    function focusPdfFinding(
+        findingId
+    ) {
+
+        var finding =
+            getFindingById(
+                findingId
+            );
+
+
+        var occurrences =
+            getFindingOccurrences(
+                finding
+            );
+
+
+        if (
+            !finding
+            || !occurrences.length
+            || !pdfPreviewState.viewer
+        ) {
+            return;
+        }
+
+
+        var current =
+            pdfPreviewState
+                .occurrenceIndex[
+                    findingId
+                ] || 0;
+
+
+        if (
+            current
+            >= occurrences.length
+        ) {
+            current = 0;
+        }
+
+
+        pdfPreviewState
+            .occurrenceIndex[
+                findingId
+            ] =
+            current;
+
+
+        pdfPreviewState
+            .selectedFindingId =
+            findingId;
+
+
+        var occurrence =
+            occurrences[
+                current
+            ];
+
+
+        pdfPreviewState
+            .viewer
+            .currentPageNumber =
+            Number(
+                occurrence.page
+            )
+            + 1;
+
+
+        renderPdfFindingsSidebar();
+
+        refreshPdfOverlayState();
+
+
+        setTimeout(
+            scrollToSelectedPdfBox,
+            100
+        );
+    }
+
+
+    function scrollToSelectedPdfBox() {
+
+        var findingId =
+            pdfPreviewState
+                .selectedFindingId;
+
+
+        if (
+            !findingId
+            || !pdfViewerElement
+        ) {
+            return;
+        }
+
+
+        var current =
+            pdfPreviewState
+                .occurrenceIndex[
+                    findingId
+                ] || 0;
+
+
+        var selector =
+            '.pii-overlay-box'
+            + '[data-finding-id="'
+            + findingId
+            + '"]'
+            + '[data-occurrence-index="'
+            + current
+            + '"]';
+
+
+        var box =
+            pdfViewerElement.querySelector(
+                selector
+            );
+
+
+        if (box) {
+            box.scrollIntoView({
+                behavior:
+                    'smooth',
+
+                block:
+                    'center',
+
+                inline:
+                    'center'
+            });
+        }
+    }
+
+
+    // =========================================================
+    // Zoom
+    // =========================================================
+
+    function updatePdfZoomValue() {
+
+        if (
+            !pdfPreviewState.viewer
+            || !pdfZoomValue
+        ) {
+            return;
+        }
+
+
+        var scale =
+            pdfPreviewState
+                .viewer
+                .currentScale;
+
+
+        if (
+            scale
+            && isFinite(scale)
+        ) {
+            pdfZoomValue.textContent =
+                Math.round(
+                    scale * 100
+                )
+                + '%';
+        }
+    }
+
+
+    if (pdfZoomInBtn) {
+        pdfZoomInBtn.addEventListener(
+            'click',
+            function () {
+
+                if (!pdfPreviewState.viewer) {
+                    return;
+                }
+
+                pdfPreviewState
+                    .viewer
+                    .currentScale *=
+                    1.15;
+            }
+        );
+    }
+
+
+    if (pdfZoomOutBtn) {
+        pdfZoomOutBtn.addEventListener(
+            'click',
+            function () {
+
+                if (!pdfPreviewState.viewer) {
+                    return;
+                }
+
+                pdfPreviewState
+                    .viewer
+                    .currentScale /=
+                    1.15;
+            }
+        );
+    }
+
+
+    if (pdfZoomFitBtn) {
+        pdfZoomFitBtn.addEventListener(
+            'click',
+            function () {
+
+                if (!pdfPreviewState.viewer) {
+                    return;
+                }
+
+                pdfPreviewState
+                    .viewer
+                    .currentScaleValue =
+                    'page-width';
+            }
+        );
+    }
+
+
+    // =========================================================
+    // Wykrycia / Po anonimizacji
+    // =========================================================
+
+    function setPreviewMode(
+        mode
+    ) {
+
+        pdfPreviewState.previewMode =
+            mode === 'output'
+            ? 'output'
+            : 'detections';
+
+
+        if (previewModeDetectionsBtn) {
+
+            previewModeDetectionsBtn
+                .classList.toggle(
+                    'is-active',
+
+                    pdfPreviewState
+                        .previewMode
+                        === 'detections'
+                );
+        }
+
+
+        if (previewModeOutputBtn) {
+
+            previewModeOutputBtn
+                .classList.toggle(
+                    'is-active',
+
+                    pdfPreviewState
+                        .previewMode
+                        === 'output'
+                );
+        }
+
+
+        refreshPdfOverlayState();
+    }
+
+
+    if (previewModeDetectionsBtn) {
+
+        previewModeDetectionsBtn
+            .addEventListener(
+                'click',
+                function () {
+
+                    setPreviewMode(
+                        'detections'
+                    );
+                }
+            );
+    }
+
+
+    if (previewModeOutputBtn) {
+
+        previewModeOutputBtn
+            .addEventListener(
+                'click',
+                function () {
+
+                    setPreviewMode(
+                        'output'
+                    );
+                }
+            );
+    }
+
+
+    // =========================================================
+    // Wyszukiwanie
+    // =========================================================
+
+    function dispatchPdfSearch(
+        findPrevious,
+        type
+    ) {
+
+        if (
+            !pdfPreviewState.eventBus
+            || !pdfSearchInput
+        ) {
+            return;
+        }
+
+
+        pdfPreviewState
+            .eventBus
+            .dispatch(
+                'find',
+                {
+                    source:
+                        pdfSearchInput,
+
+                    type:
+                        type || '',
+
+                    query:
+                        pdfSearchInput.value,
+
+                    phraseSearch:
+                        true,
+
+                    caseSensitive:
+                        false,
+
+                    entireWord:
+                        false,
+
+                    highlightAll:
+                        true,
+
+                    findPrevious:
+                        Boolean(
+                            findPrevious
+                        ),
+
+                    matchDiacritics:
+                        true
+                }
+            );
+    }
+
+
+    if (pdfSearchInput) {
+
+        pdfSearchInput.addEventListener(
+            'input',
+            function () {
+
+                dispatchPdfSearch(
+                    false,
+                    ''
+                );
+            }
+        );
+
+
+        pdfSearchInput.addEventListener(
+            'keydown',
+            function (event) {
+
+                if (
+                    event.key
+                    === 'Enter'
+                ) {
+                    event.preventDefault();
+
+                    dispatchPdfSearch(
+                        event.shiftKey,
+                        'again'
+                    );
+                }
+            }
+        );
+    }
+
+
+    if (pdfSearchPrev) {
+
+        pdfSearchPrev.addEventListener(
+            'click',
+            function () {
+
+                dispatchPdfSearch(
+                    true,
+                    'again'
+                );
+            }
+        );
+    }
+
+
+    if (pdfSearchNext) {
+
+        pdfSearchNext.addEventListener(
+            'click',
+            function () {
+
+                dispatchPdfSearch(
+                    false,
+                    'again'
+                );
+            }
+        );
+    }
+
+
+    // =========================================================
+    // Zamykanie modala / Ctrl+F
+    // =========================================================
+
+    if (modalCloseBtn) {
+
+        modalCloseBtn.addEventListener(
+            'click',
+            closePdfPreview
+        );
+    }
+
+
+    window.addEventListener(
+        'click',
+        function (event) {
+
+            if (
+                event.target
+                === modal
+            ) {
+                closePdfPreview();
+            }
+        }
+    );
+
+
+    document.addEventListener(
+        'keydown',
+        function (event) {
+
+            if (
+                !modal
+                || modal.style.display
+                    !== 'flex'
+            ) {
+                return;
+            }
+
+
+            if (
+                event.key
+                === 'Escape'
+            ) {
+                closePdfPreview();
+
+                return;
+            }
+
+
+            if (
+                (
+                    event.ctrlKey
+                    || event.metaKey
+                )
+                && event.key
+                    .toLowerCase()
+                    === 'f'
+            ) {
+                event.preventDefault();
+
+
+                if (pdfSearchInput) {
+
+                    pdfSearchInput.focus();
+
+                    pdfSearchInput.select();
+                }
+            }
+        }
+    );
     function escapeHtml(text) {
         var div = document.createElement('div');
-        div.appendChild(document.createTextNode(text));
+        div.appendChild(
+            document.createTextNode(text)
+        );
         return div.innerHTML;
     }
+
 })();

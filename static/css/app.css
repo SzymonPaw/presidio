@@ -161,60 +161,478 @@ h1 {
     font-weight: 600;
 }
 
-/* Modal podglądu CSS */
+/* =========================================================
+   PDF.js - pełnoekranowy podgląd dokumentu
+   ========================================================= */
+
 .modal {
     position: fixed;
     z-index: 1000;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    overflow: auto;
-    background-color: rgba(0,0,0,0.5);
-    display: flex;
+    inset: 0;
+
+    padding: 2vh 2vw;
+
+    background: rgba(0, 0, 0, 0.55);
+
     justify-content: center;
     align-items: center;
 }
 
-.modal-content {
-    background-color: #fff;
-    padding: 20px;
+.pdf-preview-shell {
+    width: 96vw;
+    height: 96vh;
+
+    background: #ffffff;
+
     border-radius: 8px;
-    width: 80%;
-    max-width: 800px;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-    position: relative;
-    max-height: 90vh;
+    overflow: hidden;
+
     display: flex;
     flex-direction: column;
+
+    box-shadow:
+        0 8px 30px
+        rgba(0, 0, 0, 0.3);
+}
+
+.pdf-preview-toolbar {
+    min-height: 58px;
+    padding: 8px 12px;
+
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+
+    border-bottom: 1px solid #d9d9d9;
+
+    background: #ffffff;
+}
+
+.pdf-preview-title {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-right: auto;
+}
+
+.pdf-page-indicator {
+    color: #6c757d;
+    font-size: 0.8rem;
+}
+
+.pdf-preview-mode {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.pdf-mode-btn {
+    border: 1px solid #cfd6dc;
+    background: #ffffff;
+    color: #34495e;
+
+    border-radius: 4px;
+
+    padding: 0.45rem 0.75rem;
+
+    cursor: pointer;
+}
+
+.pdf-mode-btn:hover {
+    background: #f4f8fb;
+}
+
+.pdf-mode-btn.is-active {
+    background: #3498db;
+    border-color: #3498db;
+    color: #ffffff;
+}
+
+.pdf-search {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.pdf-search input {
+    width: 220px;
+    max-width: 28vw;
+
+    padding: 7px 10px;
+
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+
+    font: inherit;
+}
+
+.pdf-zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#pdf-zoom-value {
+    min-width: 52px;
+    text-align: center;
+    font-size: 0.9rem;
 }
 
 .close-btn {
-    position: absolute;
-    right: 20px;
-    top: 15px;
-    color: #aaa;
-    font-size: 28px;
-    font-weight: bold;
+    border: 0;
+    background: transparent;
+
+    padding: 0 8px;
+
+    color: #777777;
+
+    font-size: 30px;
+    line-height: 1;
+
     cursor: pointer;
 }
 
 .close-btn:hover {
-    color: #000;
+    color: #000000;
 }
 
-.modal-body {
+.pdf-preview-layout {
+    min-height: 0;
+    flex: 1;
+
+    display: grid;
+
+    grid-template-columns:
+        minmax(0, 1fr)
+        340px;
+}
+
+.pdf-viewer-pane {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+
+    background: #525659;
+}
+
+#pdf-viewer-container {
+    position: absolute;
+    inset: 0;
+
+    overflow: auto;
+
+    background: #525659;
+}
+
+#pdf-viewer {
+    padding: 18px 0 32px;
+}
+
+.pdfViewer .page {
+    margin:
+        0 auto
+        18px auto !important;
+
+    box-shadow:
+        0 2px 10px
+        rgba(0, 0, 0, 0.32);
+}
+
+
+/* =========================================================
+   Warstwa Presidio
+   ========================================================= */
+
+.pii-overlay-layer {
+    position: absolute;
+    inset: 0;
+
+    z-index: 40;
+
+    pointer-events: none;
+}
+
+.pii-overlay-box {
+    position: absolute;
+
+    border:
+        2px solid
+        rgba(220, 53, 69, 0.95);
+
+    background:
+        rgba(220, 53, 69, 0.20);
+
+    overflow: hidden;
+
+    pointer-events: none;
+}
+
+.pii-overlay-box.is-selected {
+    border:
+        3px solid
+        rgba(0, 102, 255, 1);
+
+    background:
+        rgba(0, 102, 255, 0.30);
+}
+
+.pii-overlay-box.is-hidden {
+    display: none;
+}
+
+.pii-overlay-box.is-output-preview {
+    display: flex;
+    align-items: center;
+
+    padding: 0 3px;
+
+    border:
+        1px solid
+        #111111;
+
+    background:
+        #ffffff;
+
+    color:
+        #111111;
+
+    font-family:
+        Arial,
+        sans-serif;
+
+    font-size:
+        11px;
+
+    line-height:
+        1.1;
+
+    white-space:
+        nowrap;
+
+    text-overflow:
+        ellipsis;
+}
+
+.pii-overlay-box.is-output-preview.is-selected {
+    border:
+        3px solid
+        rgba(0, 102, 255, 1);
+}
+
+.pii-overlay-box.is-signature {
+    display: flex;
+    align-items: flex-start;
+
+    border:
+        2px dashed
+        #e67e22;
+
+    background:
+        rgba(230, 126, 34, 0.14);
+
+    color:
+        #8a4b08;
+
+    font-size:
+        10px;
+
+    padding: 2px;
+}
+
+
+/* =========================================================
+   Prawy panel findings
+   ========================================================= */
+
+.pdf-findings-sidebar {
+    min-width: 0;
+
+    display: flex;
+    flex-direction: column;
+
+    background: #ffffff;
+
+    border-left: 1px solid #dddddd;
+}
+
+.pdf-findings-sidebar-header {
+    padding: 14px;
+
+    border-bottom: 1px solid #dddddd;
+
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.pdf-findings-sidebar-header span {
+    color: #6c757d;
+    font-size: 0.8rem;
+}
+
+#pdf-findings-list {
+    flex: 1;
+
     overflow-y: auto;
-    text-align: center;
-    margin-top: 15px;
+
+    padding: 8px;
 }
 
-.modal-body img {
-    max-width: 100%;
-    height: auto;
-    border: 1px solid #ddd;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+.pdf-finding-item {
+    margin-bottom: 8px;
+
+    border: 1px solid #dddddd;
+    border-radius: 6px;
+
+    background: #ffffff;
 }
+
+.pdf-finding-item.is-selected {
+    border-color: #3498db;
+
+    box-shadow:
+        0 0 0 1px
+        #3498db;
+}
+
+.pdf-finding-jump {
+    width: 100%;
+
+    padding: 10px;
+
+    border: 0;
+
+    background: transparent;
+
+    text-align: left;
+
+    cursor: pointer;
+}
+
+.pdf-finding-jump:hover {
+    background: #f4f8fb;
+}
+
+.pdf-finding-type {
+    display: block;
+
+    font-size: 0.75rem;
+    font-weight: 700;
+
+    color: #6c757d;
+}
+
+.pdf-finding-value {
+    display: block;
+
+    margin-top: 2px;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    color: #2c3e50;
+}
+
+.pdf-finding-marker {
+    display: block;
+
+    margin-top: 2px;
+
+    color: #3498db;
+
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.pdf-finding-controls {
+    padding: 7px 10px;
+
+    border-top: 1px solid #eeeeee;
+
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.pdf-finding-controls .btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.pdf-occurrence-counter {
+    min-width: 48px;
+
+    text-align: center;
+
+    color: #6c757d;
+
+    font-size: 0.78rem;
+}
+
+.pdf-sidebar-anonymize {
+    margin-left: auto;
+
+    display: flex;
+    align-items: center;
+    gap: 7px;
+
+    font-size: 0.82rem;
+}
+
+.pdf-sidebar-anonymize .checkbox-wrapper-6 .tgl + .tgl-btn {
+    width: 3.2em;
+    height: 1.65em;
+}
+
+@media (max-width: 1050px) {
+    .pdf-preview-layout {
+        grid-template-columns:
+            minmax(0, 1fr)
+            280px;
+    }
+
+    .pdf-search input {
+        width: 160px;
+    }
+}
+
+@media (max-width: 760px) {
+    .modal {
+        padding: 0;
+    }
+
+    .pdf-preview-shell {
+        width: 100vw;
+        height: 100vh;
+        border-radius: 0;
+    }
+
+    .pdf-preview-layout {
+        grid-template-columns: 1fr;
+        grid-template-rows:
+            minmax(0, 1fr)
+            220px;
+    }
+
+    .pdf-findings-sidebar {
+        border-left: 0;
+        border-top: 1px solid #dddddd;
+    }
+
+    .pdf-search {
+        order: 5;
+        width: 100%;
+    }
+
+    .pdf-search input {
+        flex: 1;
+        width: auto;
+        max-width: none;
+    }
+}
+
 
 .btn-sm {
     padding: 0.3rem 0.8rem;
