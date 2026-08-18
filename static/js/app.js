@@ -100,7 +100,7 @@
             /\.pdf$/i.test(selectedFile.name);
 
         var html = '<h2>Wykryte dane</h2>';
-        html += '<table class="findings-table"><thead><tr><th>Typ</th><th>Znacznik</th><th>Pokrycie</th><th>Liczba</th><th>Anonimizuj</th>';
+        html += '<table class="findings-table"><thead><tr><th>Typ</th><th>Znacznik</th><th>Pokrycie</th><th>Wystąpienia</th><th>Anonimizuj</th>';
         // html += '<table class="findings-table"><thead><tr><th>Typ</th><th>Znacznik</th><th>Siła</th><th>Powód</th><th>Liczba</th><th>Anonimizuj</th>';
         if (isPdf) {
             html += '<th>Akcje</th>';
