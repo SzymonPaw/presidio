@@ -194,7 +194,18 @@ def _register_routes(app: Flask) -> None:
         """Ekstrahuje findings z pliku i grupuje je."""
         file_ext = filename.lower()
         if file_ext.endswith(".pdf"):
-            raw_findings = anonymizer_service.analyze_pdf(file_bytes)
+            raw_findings = (
+                anonymizer_service.analyze_pdf(
+                    file_bytes
+                )
+            )
+
+            raw_findings = (
+                pdf_adapter.enrich_findings_with_pdf_bbox(
+                    file_bytes,
+                    raw_findings,
+                )
+            )
         elif file_ext.endswith(".docx"):
             raw_findings = anonymizer_service.analyze_docx(file_bytes)
         elif file_ext.endswith(".xlsx"):
@@ -210,6 +221,7 @@ def _register_routes(app: Flask) -> None:
             # PDF
             "page",
             "bbox",
+            "pdf_bbox",
 
             # XLSX
             "location",
@@ -255,7 +267,14 @@ def _register_routes(app: Flask) -> None:
 
                     # Wszystkie miejsca wystąpienia tej samej
                     # wartości.
-                    "occurrences": [],
+                    "occurrences": [
+                        {
+                            "page": signature["page"],
+                            "bbox": signature["bbox"],
+                            "pdf_bbox": signature["pdf_bbox"],
+                        }
+                        for signature in signatures
+                    ],
                 }
 
                 # ----------------------------------------------------
@@ -342,6 +361,9 @@ def _register_routes(app: Flask) -> None:
                         "count": len(
                             signatures
                         ),
+                        "pdf_bbox": first_signature[
+                            "pdf_bbox"
+                        ],
                         "document_action": (
                             "remove_pdf_signatures"
                         ),
@@ -467,57 +489,6 @@ def _register_routes(app: Flask) -> None:
             
         except Exception as exc:
             return jsonify({"error": f"Blad podczas anonimizacji: {str(exc)}"}), 500
-
-    @app.route("/preview_page", methods=["POST"])
-    def preview_page():
-        """Renderuje podglad strony PDF z zaznaczonymi znaleziskami."""
-        if "file" not in request.files or "page" not in request.form:
-            return jsonify({"error": "Brak danych"}), 400
-
-        file = request.files["file"]
-        page_num = int(request.form.get("page", 0))
-
-        # Pobieramy listy aktywnych i podswietlonych ID z żądania
-        active_ids_raw = request.form.get("active_ids", "[]")
-        highlight_id = request.form.get("highlight_id", "")
-
-        try:
-            active_ids = json.loads(active_ids_raw)
-        except Exception:
-            active_ids = []
-
-        file_bytes = file.read()
-
-        import traceback
-        try:
-            # Ponowna analiza aby miec findings z bboxami
-            findings = anonymizer_service.analyze_pdf(file_bytes)
-
-            # Rejestrujemy powiazanie ID z kluczem (entity_type, raw_value)
-            # Uzyskujemy ujednolicone ID poprzez wywolanie _get_findings_for_file
-            grouped_findings = _get_findings_for_file(file_bytes, file.filename)
-            id_to_key = {}
-            for gf in grouped_findings:
-                id_to_key[gf["id"]] = (gf["entity_type"], gf["raw_value"])
-
-            # Budujemy zestawy aktywnych i wybranego klucza
-            active_keys = set(id_to_key[aid] for aid in active_ids if aid in id_to_key)
-            highlight_key = id_to_key.get(highlight_id, None)
-
-            # Renderowanie z filtrami kolorow i aktywnosci
-            png_bytes = pdf_adapter.get_page_preview(
-                file_bytes,
-                page_num,
-                findings,
-                active_keys=active_keys,
-                highlight_key=highlight_key
-            )
-
-            return send_file(io.BytesIO(png_bytes), mimetype="image/png")
-        except Exception:
-            traceback.print_exc()
-            return jsonify({"error": "Błąd serwera - sprawdź konsolę"}), 500
-
 
 # ---------------------------------------------------------------------------
 # Punkt wejsciowy dla opcjonalnego uruchomienia bezposredniego

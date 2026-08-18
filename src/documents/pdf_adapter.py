@@ -7,74 +7,189 @@ import pikepdf
 class PdfAdapter:
     """Adapter do analizy i anonimizacji dokumentow PDF z warstwa tekstowa."""
 
-    def get_full_text(self, pdf_bytes: bytes) -> str:
-        """Zwraca pelny tekst PDF(do analizy)."""
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        parts = []
+    def get_full_text(
+    self,
+    pdf_bytes: bytes,
+) -> str:
+    """Zwraca pelny tekst PDF do analizy."""
+
+    doc = fitz.open(
+        stream=pdf_bytes,
+        filetype="pdf",
+    )
+
+    parts = []
+
+    try:
         for page in doc:
-            parts.append(page.get_text())
-        doc.close()
-        return "\n".join(parts)
+            parts.append(
+                page.get_text()
+            )
 
-    def detect_digital_signatures(
-        self,
-        pdf_bytes: bytes,
-    ) -> List[Dict[str, Any]]:
-
-        signatures: List[Dict[str, Any]] = []
-
-        doc = fitz.open(
-            stream=pdf_bytes,
-            filetype="pdf",
+        return "\n".join(
+            parts
         )
 
-        try:
-            for page_index in range(
-                doc.page_count
+    finally:
+        doc.close()
+
+
+@staticmethod
+def _to_pdf_bbox(
+    page: fitz.Page,
+    bbox,
+) -> list[float]:
+    """
+    Zamienia bbox PyMuPDF na standardowe
+    wspolrzedne PDF.
+
+    Oryginalnego bbox nie zmieniamy.
+    """
+
+    mupdf_rect = fitz.Rect(
+        bbox
+    )
+
+    pdf_rect = (
+        mupdf_rect
+        * ~page.transformation_matrix
+    )
+
+    return [
+        float(pdf_rect.x0),
+        float(pdf_rect.y0),
+        float(pdf_rect.x1),
+        float(pdf_rect.y1),
+    ]
+
+
+def enrich_findings_with_pdf_bbox(
+    self,
+    pdf_bytes: bytes,
+    findings: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Dodaje pdf_bbox potrzebny frontendowemu
+    viewerowi PDF.js.
+
+    Nie zmienia bbox uzywanego przez
+    pozostala logike aplikacji.
+    """
+
+    doc = fitz.open(
+        stream=pdf_bytes,
+        filetype="pdf",
+    )
+
+    try:
+        for finding in findings:
+            page_num = finding.get(
+                "page"
+            )
+
+            bbox = finding.get(
+                "bbox"
+            )
+
+            if (
+                page_num is None
+                or not bbox
             ):
-                page = doc.load_page(
-                    page_index
+                continue
+
+            if (
+                page_num < 0
+                or page_num >= doc.page_count
+            ):
+                continue
+
+            page = doc.load_page(
+                page_num
+            )
+
+            finding["pdf_bbox"] = (
+                self._to_pdf_bbox(
+                    page,
+                    bbox,
                 )
+            )
 
-                widgets = page.widgets()
+        return findings
 
-                if widgets is None:
+    finally:
+        doc.close()
+
+
+def detect_digital_signatures(
+    self,
+    pdf_bytes: bytes,
+) -> List[Dict[str, Any]]:
+
+    signatures: List[Dict[str, Any]] = []
+
+    doc = fitz.open(
+        stream=pdf_bytes,
+        filetype="pdf",
+    )
+
+    try:
+        for page_index in range(
+            doc.page_count
+        ):
+            page = doc.load_page(
+                page_index
+            )
+
+            widgets = page.widgets()
+
+            if widgets is None:
+                continue
+
+            for widget in widgets:
+                if (
+                    widget.field_type
+                    != fitz.PDF_WIDGET_TYPE_SIGNATURE
+                ):
                     continue
 
-                for widget in widgets:
-                    if (
-                        widget.field_type
-                        != fitz.PDF_WIDGET_TYPE_SIGNATURE
-                    ):
-                        continue
+                # Puste pole przeznaczone na przyszly podpis
+                # nie jest dla nas podpisem.
+                if widget.is_signed is not True:
+                    continue
 
-                    # Puste pole przeznaczone na przyszly podpis
-                    # nie jest dla nas podpisem.
-                    if widget.is_signed is not True:
-                        continue
+                rect = widget.rect
 
-                    rect = widget.rect
-
-                    signatures.append(
-                        {
-                            "page": page_index,
-                            "bbox": [
-                                float(rect.x0),
-                                float(rect.y0),
-                                float(rect.x1),
-                                float(rect.y1),
-                            ],
-                            "field_name": (
-                                widget.field_name
-                                or ""
-                            ),
-                        }
+                pdf_bbox = (
+                    self._to_pdf_bbox(
+                        page,
+                        rect,
                     )
+                )
 
-        finally:
-            doc.close()
+                signatures.append(
+                    {
+                        "page": page_index,
 
-        return signatures
+                        "bbox": [
+                            float(rect.x0),
+                            float(rect.y0),
+                            float(rect.x1),
+                            float(rect.y1),
+                        ],
+
+                        "pdf_bbox": pdf_bbox,
+
+                        "field_name": (
+                            widget.field_name
+                            or ""
+                        ),
+                    }
+                )
+
+    finally:
+        doc.close()
+
+    return signatures
 
 
     def _remove_digital_signatures(
@@ -133,36 +248,6 @@ class PdfAdapter:
             )
 
         return result
-
-    def get_page_preview(self, pdf_bytes: bytes, page_num: int, findings: List[Dict[str, Any]], active_keys: set = None, highlight_key: tuple = None) -> bytes:
-        """Renderuje stronę PDF do obrazka PNG z naniesionymi ramkami."""
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        if page_num < 0 or page_num >= doc.page_count:
-            doc.close()
-            return b""
-
-        page = doc[page_num]
-
-        # Rysujemy ramki bezpośrednio na stronie PDF przed wyrenderowaniem do pixmapy
-        for f in findings:
-            if f.get("page") == page_num and f.get("bbox"):
-                rect = fitz.Rect(f["bbox"])
-                key = (f["entity_type"], f["raw_value"])
-
-                if highlight_key and key == highlight_key:
-                    # Podświetlenie wybranego elementu na NIEBIESKO (grubsza linia)
-                    page.draw_rect(rect, color=(0, 0.4, 1), width=3, fill=(0, 0.4, 1), fill_opacity=0.35)
-                elif active_keys is None or key in active_keys:
-                    # Rysowanie aktywnego elementu na CZERWONO
-                    page.draw_rect(rect, color=(1, 0, 0), width=2, fill=(1, 0, 0), fill_opacity=0.2)
-
-        # Renderyzacja - zoom 2x dla lepszej czytelności
-        mat = fitz.Matrix(2, 2)
-        pix = page.get_pixmap(matrix=mat)
-
-        img_data = pix.tobytes("png")
-        doc.close()
-        return img_data
 
     def anonymize(
         self,
