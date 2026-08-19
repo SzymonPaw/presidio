@@ -1775,23 +1775,29 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             findingId;
 
 
+        var occurrence =
+            occurrences[
+                current
+            ];
+
+
+        pdfPreviewState
+            .viewer
+            .currentPageNumber =
+            Number(
+                occurrence.page
+            )
+            + 1;
+
+
         renderPdfFindingsSidebar();
 
         refreshPdfOverlayState();
 
 
-        // Nie ustawiamy currentPageNumber.
-        //
-        // To właśnie powodowało nagły skok
-        // PDF.js do początku strony.
-        //
-        // Przewijamy wyłącznie wewnętrzny
-        // scroll kontenera PDF.
-
-        requestAnimationFrame(
-            function () {
-                scrollToSelectedPdfBox();
-            }
+        setTimeout(
+            scrollToSelectedPdfBox,
+            100
         );
     }
 
@@ -1806,26 +1812,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         if (
             !findingId
             || !pdfViewerElement
-            || !pdfViewerContainer
-            || !pdfPreviewState.viewer
         ) {
-            return;
-        }
-
-
-        var finding =
-            getFindingById(
-                findingId
-            );
-
-
-        var occurrences =
-            getFindingOccurrences(
-                finding
-            );
-
-
-        if (!occurrences.length) {
             return;
         }
 
@@ -1836,25 +1823,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     findingId
                 ] || 0;
 
-
-        if (
-            current
-            >= occurrences.length
-        ) {
-            current = 0;
-        }
-
-
-        var occurrence =
-            occurrences[
-                current
-            ];
-
-
-        // -----------------------------------------------------
-        // Najlepszy przypadek:
-        // overlay jest już wyrenderowany.
-        // -----------------------------------------------------
 
         var selector =
             '.pii-overlay-box'
@@ -1872,169 +1840,18 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             );
 
 
-        var containerRect =
-            pdfViewerContainer
-                .getBoundingClientRect();
-
-
         if (box) {
+            box.scrollIntoView({
+                behavior:
+                    'smooth',
 
-            var boxRect =
-                box.getBoundingClientRect();
+                block:
+                    'center',
 
-
-            var targetTop =
-                pdfViewerContainer.scrollTop
-                + (
-                    boxRect.top
-                    - containerRect.top
-                )
-                - (
-                    pdfViewerContainer
-                        .clientHeight
-                    / 2
-                )
-                + (
-                    boxRect.height
-                    / 2
-                );
-
-
-            pdfViewerContainer.scrollTo({
-                top: Math.max(
-                    0,
-                    targetTop
-                ),
-
-                behavior: 'smooth'
+                inline:
+                    'center'
             });
-
-
-            return;
         }
-
-
-        // -----------------------------------------------------
-        // Fallback:
-        //
-        // Przy dużym PDF dana strona może jeszcze nie mieć
-        // wyrenderowanego overlayu.
-        //
-        // Wtedy przewijamy płynnie bezpośrednio do
-        // współrzędnych pdf_bbox na właściwej stronie.
-        // -----------------------------------------------------
-
-        var pageIndex =
-            Number(
-                occurrence.page
-            );
-
-
-        if (
-            !Number.isFinite(
-                pageIndex
-            )
-            || pageIndex < 0
-        ) {
-            return;
-        }
-
-
-        var pageView =
-            pdfPreviewState
-                .viewer
-                .getPageView(
-                    pageIndex
-                );
-
-
-        if (
-            !pageView
-            || !pageView.div
-        ) {
-            return;
-        }
-
-
-        var pageRect =
-            pageView.div
-                .getBoundingClientRect();
-
-
-        var targetTop =
-            pdfViewerContainer.scrollTop
-            + (
-                pageRect.top
-                - containerRect.top
-            );
-
-
-        if (
-            pageView.viewport
-            && Array.isArray(
-                occurrence.pdf_bbox
-            )
-            && occurrence
-                .pdf_bbox
-                .length === 4
-        ) {
-
-            var pdfBox =
-                occurrence.pdf_bbox;
-
-
-            var point1 =
-                pageView.viewport
-                    .convertToViewportPoint(
-                        pdfBox[0],
-                        pdfBox[1]
-                    );
-
-
-            var point2 =
-                pageView.viewport
-                    .convertToViewportPoint(
-                        pdfBox[2],
-                        pdfBox[3]
-                    );
-
-
-            var boxTop =
-                Math.min(
-                    point1[1],
-                    point2[1]
-                );
-
-
-            var boxHeight =
-                Math.abs(
-                    point2[1]
-                    - point1[1]
-                );
-
-
-            targetTop +=
-                boxTop
-                - (
-                    pdfViewerContainer
-                        .clientHeight
-                    / 2
-                )
-                + (
-                    boxHeight
-                    / 2
-                );
-        }
-
-
-        pdfViewerContainer.scrollTo({
-            top: Math.max(
-                0,
-                targetTop
-            ),
-
-            behavior: 'smooth'
-        });
     }
 
 
