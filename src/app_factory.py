@@ -267,14 +267,7 @@ def _register_routes(app: Flask) -> None:
 
                     # Wszystkie miejsca wystąpienia tej samej
                     # wartości.
-                    "occurrences": [
-                        {
-                            "page": signature["page"],
-                            "bbox": signature["bbox"],
-                            "pdf_bbox": signature["pdf_bbox"],
-                        }
-                        for signature in signatures
-                    ],
+                    "occurrences": [],
                 }
 
                 # ----------------------------------------------------
@@ -363,6 +356,20 @@ def _register_routes(app: Flask) -> None:
                         ),
                         "pdf_bbox": first_signature[
                             "pdf_bbox"
+                        ],
+                        "occurrences": [
+                            {
+                                "page": signature[
+                                    "page"
+                                ],
+                                "bbox": signature[
+                                    "bbox"
+                                ],
+                                "pdf_bbox": signature[
+                                    "pdf_bbox"
+                                ],
+                            }
+                            for signature in signatures
                         ],
                         "document_action": (
                             "remove_pdf_signatures"

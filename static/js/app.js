@@ -267,6 +267,47 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         html += '</div>';
         findingsDiv.innerHTML = html;
 
+        // ---------------------------------------------------------
+        // PDF.js - otwieranie podgladu
+        // ---------------------------------------------------------
+
+        var previewBtns =
+            findingsDiv.querySelectorAll(
+                '.preview-btn'
+            );
+
+        previewBtns.forEach(
+            function (button) {
+                button.addEventListener(
+                    'click',
+                    function () {
+                        openPdfPreview(
+                            button.getAttribute(
+                                'data-finding-id'
+                            )
+                        );
+                    }
+                );
+            }
+        );
+
+
+        var fullPreviewBtn =
+            document.getElementById(
+                'full-preview-btn'
+            );
+
+        if (fullPreviewBtn) {
+            fullPreviewBtn.addEventListener(
+                'click',
+                function () {
+                    openPdfPreview(
+                        null
+                    );
+                }
+            );
+        }
+
         var mainCheckboxes =
             findingsDiv.querySelectorAll(
                 'input[name="anonymize"]'
@@ -487,28 +528,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         }
     }
 
-    // Modal closing
-    if (modalCloseBtn) {
-        modalCloseBtn.addEventListener('click', function () {
-            modal.style.display = 'none';
-            if (previewImage.src) {
-                URL.revokeObjectURL(previewImage.src);
-                previewImage.src = '';
-            }
-        });
-    }
-
-    // Kliknięcie poza modal też zamyka
-    window.addEventListener('click', function (e) {
-        if (e.target === modal) {
-            modal.style.display = 'none';
-            if (previewImage.src) {
-                URL.revokeObjectURL(previewImage.src);
-                previewImage.src = '';
-            }
-        }
-    });
-
     function isSelectedFilePdf() {
         return Boolean(
             selectedFile
@@ -517,7 +536,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             )
         );
     }
-
 
     function getFindingById(
         findingId
@@ -938,6 +956,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             return;
         }
 
+        document.body.classList.add(
+            'pdf-preview-open'
+        );
 
         modal.style.display =
             'flex';
@@ -990,6 +1011,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         modal.setAttribute(
             'aria-hidden',
             'true'
+        );
+
+        document.body.classList.remove(
+            'pdf-preview-open'
         );
     }
 
@@ -1082,36 +1107,48 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                         }
 
 
-                        var rectangle =
+                        var pdfBox =
+                            occurrence.pdf_bbox;
+
+
+                        var point1 =
                             pageView.viewport
-                                .convertToViewportRectangle(
-                                    occurrence
-                                        .pdf_bbox
+                                .convertToViewportPoint(
+                                    pdfBox[0],
+                                    pdfBox[1]
+                                );
+
+
+                        var point2 =
+                            pageView.viewport
+                                .convertToViewportPoint(
+                                    pdfBox[2],
+                                    pdfBox[3]
                                 );
 
 
                         var left =
                             Math.min(
-                                rectangle[0],
-                                rectangle[2]
+                                point1[0],
+                                point2[0]
                             );
 
                         var top =
                             Math.min(
-                                rectangle[1],
-                                rectangle[3]
+                                point1[1],
+                                point2[1]
                             );
 
                         var width =
                             Math.abs(
-                                rectangle[2]
-                                - rectangle[0]
+                                point2[0]
+                                - point1[0]
                             );
 
                         var height =
                             Math.abs(
-                                rectangle[3]
-                                - rectangle[1]
+                                point2[1]
+                                - point1[1]
                             );
 
 
