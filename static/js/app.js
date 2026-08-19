@@ -864,8 +864,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 renderPdfOverlayForPage(
                     event.pageNumber - 1
                 );
-
-                scrollToSelectedPdfBox();
             }
         );
 
