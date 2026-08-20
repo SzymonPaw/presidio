@@ -1665,6 +1665,317 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         );
     }
 
+    function getPdfOverlayAtPoint(
+        clientX,
+        clientY
+    ) {
+
+        if (!pdfViewerElement) {
+            return null;
+        }
+
+
+        var boxes =
+            pdfViewerElement
+                .querySelectorAll(
+                    '.pii-overlay-box'
+                    + ':not(.is-hidden)'
+                );
+
+
+        // Od końca, ponieważ przy nachodzących
+        // boxach interesuje nas ten narysowany
+        // najwyżej.
+
+        for (
+            var i =
+                boxes.length - 1;
+            i >= 0;
+            i -= 1
+        ) {
+
+            var box =
+                boxes[i];
+
+
+            var rect =
+                box.getBoundingClientRect();
+
+
+            var inside =
+                clientX >= rect.left
+                && clientX <= rect.right
+                && clientY >= rect.top
+                && clientY <= rect.bottom;
+
+
+            if (inside) {
+                return box;
+            }
+        }
+
+
+        return null;
+    }
+
+    function selectPdfFindingFromOverlay(
+        findingId,
+        occurrenceIndex
+    ) {
+
+        var finding =
+            getFindingById(
+                findingId
+            );
+
+
+        if (!finding) {
+            return;
+        }
+
+
+        var occurrences =
+            getFindingOccurrences(
+                finding
+            );
+
+
+        var index =
+            Number(
+                occurrenceIndex
+            );
+
+
+        if (
+            !Number.isInteger(
+                index
+            )
+            || index < 0
+            || index >= occurrences.length
+        ) {
+            return;
+        }
+
+
+        // Zapamiętujemy dokładnie kliknięte
+        // wystąpienie findingu.
+
+        pdfPreviewState
+            .occurrenceIndex[
+                findingId
+            ] =
+            index;
+
+
+        pdfPreviewState
+            .selectedFindingId =
+            findingId;
+
+
+        // Aktualizujemy sidebar.
+        //
+        // Ta funkcja odbuduje również licznik,
+        // np. 2 / 4.
+
+        renderPdfFindingsSidebar();
+
+
+        // Aktualizujemy czerwone / niebieskie
+        // obramowania na PDF.
+
+        refreshPdfOverlayState();
+
+
+        // Jeżeli finding jest poza widocznym
+        // fragmentem sidebara, przewijamy
+        // WYŁĄCZNIE sidebar.
+
+        requestAnimationFrame(
+            function () {
+                scrollPdfSidebarToFinding(
+                    findingId
+                );
+            }
+        );
+    }
+
+    function scrollPdfSidebarToFinding(
+        findingId
+    ) {
+
+        if (!pdfFindingsList) {
+            return;
+        }
+
+
+        var buttons =
+            pdfFindingsList.querySelectorAll(
+                '.pdf-finding-jump'
+            );
+
+
+        var targetItem =
+            null;
+
+
+        buttons.forEach(
+            function (button) {
+
+                if (
+                    String(
+                        button.dataset.findingId
+                    )
+                    === String(
+                        findingId
+                    )
+                ) {
+
+                    targetItem =
+                        button.closest(
+                            '.pdf-finding-item'
+                        );
+                }
+            }
+        );
+
+
+        if (!targetItem) {
+            return;
+        }
+
+
+        var listRect =
+            pdfFindingsList
+                .getBoundingClientRect();
+
+
+        var itemRect =
+            targetItem
+                .getBoundingClientRect();
+
+
+        var margin =
+            8;
+
+
+        // Finding jest już w całości widoczny.
+        // Nie ruszamy sidebara.
+
+        var fullyVisible =
+            itemRect.top
+                >= listRect.top
+                    + margin
+            &&
+            itemRect.bottom
+                <= listRect.bottom
+                    - margin;
+
+
+        if (fullyVisible) {
+            return;
+        }
+
+
+        // Finding jest poza widocznym obszarem.
+        // Ustawiamy go mniej więcej na środku
+        // prawego panelu.
+
+        var targetTop =
+            pdfFindingsList.scrollTop
+            + (
+                itemRect.top
+                - listRect.top
+            )
+            - (
+                pdfFindingsList
+                    .clientHeight
+                / 2
+            )
+            + (
+                itemRect.height
+                / 2
+            );
+
+
+        pdfFindingsList.scrollTo({
+            top: Math.max(
+                0,
+                targetTop
+            ),
+
+            behavior:
+                'smooth'
+        });
+    }
+
+    if (pdfViewerContainer) {
+
+        pdfViewerContainer
+            .addEventListener(
+                'click',
+                function (event) {
+
+                    var clickedBox =
+                        getPdfOverlayAtPoint(
+                            event.clientX,
+                            event.clientY
+                        );
+
+
+                    if (!clickedBox) {
+                        return;
+                    }
+
+
+                    selectPdfFindingFromOverlay(
+                        clickedBox
+                            .dataset
+                            .findingId,
+
+                        clickedBox
+                            .dataset
+                            .occurrenceIndex
+                    );
+                }
+            );
+
+                pdfViewerContainer
+            .addEventListener(
+                'mousemove',
+                function (event) {
+
+                    var hoveredBox =
+                        getPdfOverlayAtPoint(
+                            event.clientX,
+                            event.clientY
+                        );
+
+
+                    pdfViewerContainer
+                        .classList
+                        .toggle(
+                            'is-over-pii',
+                            Boolean(
+                                hoveredBox
+                            )
+                        );
+                }
+            );
+
+
+        pdfViewerContainer
+            .addEventListener(
+                'mouseleave',
+                function () {
+
+                    pdfViewerContainer
+                        .classList
+                        .remove(
+                            'is-over-pii'
+                        );
+                }
+            );
+    }
 
     // =========================================================
     // Nawigacja po wystąpieniach
