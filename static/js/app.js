@@ -1880,7 +1880,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             var boxRect =
                 box.getBoundingClientRect();
 
-
             var targetTop =
                 pdfViewerContainer.scrollTop
                 + (
@@ -1898,10 +1897,32 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 );
 
 
+            var targetLeft =
+                pdfViewerContainer.scrollLeft
+                + (
+                    boxRect.left
+                    - containerRect.left
+                )
+                - (
+                    pdfViewerContainer
+                        .clientWidth
+                    / 2
+                )
+                + (
+                    boxRect.width
+                    / 2
+                );
+
+
             pdfViewerContainer.scrollTo({
                 top: Math.max(
                     0,
                     targetTop
+                ),
+
+                left: Math.max(
+                    0,
+                    targetLeft
                 ),
 
                 behavior: 'smooth'
@@ -1966,6 +1987,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 - containerRect.top
             );
 
+        var targetLeft =
+            pdfViewerContainer.scrollLeft
+            + (
+                pageRect.left
+                - containerRect.left
+            );
+
 
         if (
             pageView.viewport
@@ -2010,6 +2038,19 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     - point1[1]
                 );
 
+            var boxLeft =
+                Math.min(
+                    point1[0],
+                    point2[0]
+                );
+
+
+            var boxWidth =
+                Math.abs(
+                    point2[0]
+                    - point1[0]
+                );
+
 
             targetTop +=
                 boxTop
@@ -2022,6 +2063,18 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     boxHeight
                     / 2
                 );
+
+            targetLeft +=
+                boxLeft
+                - (
+                    pdfViewerContainer
+                        .clientWidth
+                    / 2
+                )
+                + (
+                    boxWidth
+                    / 2
+                );
         }
 
 
@@ -2029,6 +2082,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             top: Math.max(
                 0,
                 targetTop
+            ),
+
+            left: Math.max(
+                0,
+                targetLeft
             ),
 
             behavior: 'smooth'
