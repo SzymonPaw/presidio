@@ -350,8 +350,9 @@ h1 {
         rgba(0, 0, 0, 0.32);
 }
 
-#pdf-viewer-container.is-over-pii {
-    cursor: pointer;
+#pdf-viewer-container.is-over-pii,
+#pdf-viewer-container.is-over-pii * {
+    cursor: pointer !important;
 }
 
 /* =========================================================

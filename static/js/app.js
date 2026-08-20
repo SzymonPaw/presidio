@@ -123,7 +123,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         occurrenceIndex: {},
 
         loadedFile: null,
+        ready: false,
 
+        initialScaleApplied: false,
         previewMode: 'detections'
     };
 
@@ -698,6 +700,59 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 );
             }
         }
+        // Jeśli istnieje aktywny viewer/linkService/findController,
+        // spróbuj odłączyć dokumenty i posprzątać, aby nie zostawić
+        // wiszących referencji, które mogłyby zablokować kolejne
+        // otwarcia podglądu.
+        try {
+            var _oldViewer = pdfPreviewState.viewer;
+
+            if (
+                _oldViewer
+                && typeof _oldViewer.setDocument === 'function'
+            ) {
+                try {
+                    _oldViewer.setDocument(null);
+                } catch (e) {
+                    // ignore
+                }
+            }
+
+            if (
+                pdfPreviewState.linkService
+                && typeof pdfPreviewState.linkService.setDocument === 'function'
+            ) {
+                try {
+                    pdfPreviewState.linkService.setDocument(null, null);
+                } catch (e) {
+                    // ignore
+                }
+            }
+
+            if (
+                pdfPreviewState.findController
+                && typeof pdfPreviewState.findController.setDocument === 'function'
+            ) {
+                try {
+                    pdfPreviewState.findController.setDocument(null);
+                } catch (e) {
+                    // ignore
+                }
+            }
+
+            if (
+                _oldViewer
+                && typeof _oldViewer.cleanup === 'function'
+            ) {
+                try {
+                    _oldViewer.cleanup();
+                } catch (e) {
+                    // ignore
+                }
+            }
+        } catch (e) {
+            console.debug('Error cleaning old viewer/linkService/findController', e);
+        }
 
 
         pdfPreviewState = {
@@ -712,14 +767,30 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             occurrenceIndex: {},
 
             loadedFile: null,
-
-            previewMode: 'detections'
+            ready: false,
+            previewMode: 'detections',
+            initialScaleApplied: false
         };
 
 
         if (pdfViewerElement) {
             pdfViewerElement.innerHTML =
                 '';
+        }
+
+        if (pdfViewerContainer) {
+
+            pdfViewerContainer.scrollTop =
+                0;
+
+            pdfViewerContainer.scrollLeft =
+                0;
+
+            pdfViewerContainer
+                .classList
+                .remove(
+                    'is-over-pii'
+                );
         }
 
         if (pdfFindingsList) {
@@ -743,6 +814,119 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         );
     }
 
+    function waitForPdfLayoutReady(
+        viewer
+    ) {
+
+        return new Promise(
+            function (resolve) {
+
+                var attempts = 0;
+
+                var maxAttempts = 60;
+
+
+                function checkLayout() {
+
+                    attempts += 1;
+
+
+                    if (!pdfViewerContainer) {
+                        resolve(false);
+                        return;
+                    }
+
+
+                    var containerRect =
+                        pdfViewerContainer
+                            .getBoundingClientRect();
+
+
+                    var containerReady =
+                        containerRect.width > 0
+                        && containerRect.height > 0;
+
+
+                    // Jeżeli viewer jeszcze nie istnieje,
+                    // wystarczy nam gotowy kontener modala.
+
+                    if (!viewer) {
+
+                        if (containerReady) {
+
+                            requestAnimationFrame(
+                                function () {
+                                    resolve(true);
+                                }
+                            );
+
+                            return;
+                        }
+
+                    } else {
+
+                        // Przy pagesinit wymagamy dodatkowo,
+                        // żeby pierwsza strona PDF naprawdę
+                        // uczestniczyła już w layoucie DOM.
+
+                        var firstPage =
+                            viewer.getPageView(
+                                0
+                            );
+
+
+                        var pageDiv =
+                            firstPage
+                                ? firstPage.div
+                                : null;
+
+
+                        var pageReady =
+                            Boolean(
+                                pageDiv
+                                && pageDiv.isConnected
+                                && pageDiv.offsetParent
+                                    !== null
+                            );
+
+
+                        if (
+                            containerReady
+                            && pageReady
+                        ) {
+
+                            requestAnimationFrame(
+                                function () {
+                                    resolve(true);
+                                }
+                            );
+
+                            return;
+                        }
+                    }
+
+
+                    if (
+                        attempts >= maxAttempts
+                    ) {
+
+                        resolve(false);
+                        return;
+                    }
+
+
+                    requestAnimationFrame(
+                        checkLayout
+                    );
+                }
+
+
+                requestAnimationFrame(
+                    checkLayout
+                );
+            }
+        );
+    }
 
     // =========================================================
     // Ładowanie całego PDF
@@ -751,10 +935,23 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     async function ensurePdfPreviewLoaded() {
 
         if (
-            pdfPreviewState.viewer
+            pdfPreviewState.ready
+            && pdfPreviewState.viewer
             && pdfPreviewState.loadedFile
                 === selectedFile
         ) {
+
+            // Viewer istnieje i faktycznie
+            // wyrenderował już dokument.
+            //
+            // Po ponownym pokazaniu modala
+            // wymuszamy przeliczenie widocznych
+            // stron.
+
+            pdfPreviewState
+                .viewer
+                .update();
+
             return;
         }
 
@@ -767,6 +964,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 'Brak wybranego PDF.'
             );
         }
+
+
+        var fileForPreview =
+            selectedFile;
 
 
         resetPdfPreview();
@@ -822,23 +1023,17 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         pdfPreviewState.viewer =
             viewer;
 
-        pdfPreviewState.loadedFile =
-            selectedFile;
-
 
         // PDF gotowy - pokazujemy wszystkie strony.
         eventBus.on(
             'pagesinit',
             function () {
 
-                viewer.currentScaleValue =
-                    'page-width';
-
-
                 if (
                     pdfPageCount
                     && pdfPreviewState.pdfDocument
                 ) {
+
                     pdfPageCount.textContent =
                         String(
                             pdfPreviewState
@@ -848,9 +1043,39 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 }
 
 
-                updatePdfZoomValue();
-
                 renderPdfFindingsSidebar();
+
+
+                // PDF.js sam wykonuje update podczas
+                // inicjalizacji.
+                //
+                // Przy bardzo szybkim otwarciu modala
+                // ten pierwszy update może nastąpić
+                // zanim przeglądarka ustabilizuje
+                // pozycje stron.
+                //
+                // Czekamy dwie klatki layoutu i
+                // ponownie uruchamiamy rendering
+                // widocznych stron.
+
+                requestAnimationFrame(
+                    function () {
+
+                        requestAnimationFrame(
+                            function () {
+
+                                if (
+                                    pdfPreviewState
+                                        .viewer
+                                    === viewer
+                                ) {
+
+                                    viewer.update();
+                                }
+                            }
+                        );
+                    }
+                );
             }
         );
 
@@ -864,6 +1089,57 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 renderPdfOverlayForPage(
                     event.pageNumber - 1
                 );
+
+                if (
+                    !pdfPreviewState.ready
+                ) {
+
+                    pdfPreviewState.ready =
+                        true;
+
+                    pdfPreviewState.loadedFile =
+                        fileForPreview;
+                }
+
+
+                // Poczatkowa skale ustawiamy dopiero
+                // po faktycznym wyrenderowaniu strony.
+                //
+                // W tym momencie pageView uczestniczy
+                // juz w layoucie DOM, wiec PDF.js moze
+                // bezpiecznie wykonac scrollPageIntoView.
+
+                if (
+                    !pdfPreviewState
+                        .initialScaleApplied
+                ) {
+
+                    pdfPreviewState
+                        .initialScaleApplied =
+                        true;
+
+
+                    requestAnimationFrame(
+                        function () {
+
+                            try {
+
+                                viewer.currentScaleValue =
+                                    'page-width';
+
+                                updatePdfZoomValue();
+
+                            } catch (error) {
+
+                                console.warn(
+                                    'Nie udalo sie ustawic '
+                                    + 'poczatkowej skali PDF.',
+                                    error
+                                );
+                            }
+                        }
+                    );
+                }
             }
         );
 
@@ -894,7 +1170,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         // PDF.js dostaje bezpośrednio lokalne bajty File.
         var pdfBytes =
             new Uint8Array(
-                await selectedFile
+                await fileForPreview
                     .arrayBuffer()
             );
 
@@ -939,6 +1215,92 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             pdfDocument,
             null
         );
+
+        // Poczekaj na gotowość pierwszej strony. Nasłuchujemy zarówno
+        // `pagesinit` (gdy pageViews są utworzone), jak i `pagerendered`
+        // dla strony 1. Po rozwiązaniu usuwamy listener'y. Fallback: 5s.
+        await new Promise(function (resolve) {
+            if (
+                pdfPreviewState.initialScaleApplied
+                || pdfPreviewState.ready
+            ) {
+                resolve(true);
+                return;
+            }
+
+            var resolved = false;
+
+            function cleanup() {
+                try {
+                    eventBus.off('pagerendered', onPagerendered);
+                    eventBus.off('pagesinit', onPagesinit);
+                } catch (e) {
+                    // ignore if `off` not present
+                }
+                clearTimeout(timeoutId);
+            }
+
+            function tryResolveIfPageReady(pageNumber) {
+                if (resolved) return;
+
+                if (!pdfPreviewState.viewer) return;
+
+                var firstPage = pdfPreviewState.viewer.getPageView(0);
+
+                var pageDiv = firstPage ? firstPage.div : null;
+
+                var pageReady = Boolean(pageDiv && pageDiv.isConnected && pageDiv.offsetParent !== null);
+
+                if (pageReady) {
+                    resolved = true;
+                    cleanup();
+                    resolve(true);
+                }
+            }
+
+            function onPagesinit() {
+                tryResolveIfPageReady(1);
+            }
+
+            function onPagerendered(event) {
+                // Prefers first page render; accept other pages only if
+                // the first page is connected to layout.
+                tryResolveIfPageReady(event.pageNumber);
+            }
+
+            // Register listeners (EventBus supports `on`; `off` may exist)
+            eventBus.on('pagerendered', onPagerendered);
+            eventBus.on('pagesinit', onPagesinit);
+
+            var timeoutId = setTimeout(function () {
+                if (resolved) return;
+                resolved = true;
+                try {
+                    cleanup();
+                } catch (e) {
+                    // ignore
+                }
+                console.warn('Timeout waiting for first page render');
+
+                try {
+                    var containerRect = pdfViewerContainer ? pdfViewerContainer.getBoundingClientRect() : null;
+
+                    console.debug('PDF preview timeout diagnostics:', {
+                        containerRect: containerRect,
+                        pdfPreviewState: pdfPreviewState
+                    });
+
+                    var firstView = pdfPreviewState && pdfPreviewState.viewer ? pdfPreviewState.viewer.getPageView(0) : null;
+                    var pageDiv = firstView ? firstView.div : null;
+
+                    console.debug('firstPageDiv exists:', Boolean(pageDiv), 'isConnected:', pageDiv ? pageDiv.isConnected : null, 'offsetParent:', pageDiv ? pageDiv.offsetParent : null);
+                } catch (e) {
+                    console.debug('Failed to collect diagnostics for PDF timeout', e);
+                }
+
+                resolve(false);
+            }, 5000);
+        });
     }
 
 
@@ -964,6 +1326,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         modal.setAttribute(
             'aria-hidden',
             'false'
+        );
+
+        // Jeśli viewer już istnieje (ponowne otwarcie), czekamy aż
+        // jego pierwsza strona będzie podłączona do layoutu.
+        await waitForPdfLayoutReady(
+            pdfPreviewState.viewer || null
         );
 
 
@@ -1014,6 +1382,14 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         document.body.classList.remove(
             'pdf-preview-open'
         );
+
+        // Usuń/posprzątaj stan preview przy zamknięciu, aby uniknąć
+        // kumulacji listenerów i zasobów przy wielokrotnym otwieraniu.
+        try {
+            resetPdfPreview();
+        } catch (e) {
+            console.debug('Error during resetPdfPreview on close', e);
+        }
     }
 
 
