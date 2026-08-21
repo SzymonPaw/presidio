@@ -2,12 +2,21 @@
     box-sizing: border-box;
 }
 
+:root {
+    --color-navy: #001F5F;
+    --color-pink: #FF5867;
+    --color-turquoise: #009BA1;
+    --color-gray: #B2B2B2;
+    --color-bg-green: #e6f8ef;
+    --color-text: #2c3e50;
+}
+
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     margin: 0;
     padding: 0;
-    background: #f4f6f9;
-    color: #2c3e50;
+    background: var(--color-bg-green);
+    color: var(--color-text);
     line-height: 1.5;
 }
 
@@ -52,13 +61,13 @@ h1 {
 }
 
 .file-label:hover {
-    border-color: #3498db;
-    background: #f0f7ff;
+    border-color: var(--color-navy);
+    background: #f4f7ff;
 }
 
 .file-label.dragover {
-    border-color: #27ae60;
-    background: #edfff5;
+    border-color: var(--color-turquoise);
+    background: #eafdfb;
 }
 
 .file-info {
@@ -78,12 +87,12 @@ h1 {
 }
 
 .btn-primary {
-    background: #3498db;
+    background: var(--color-navy);
     color: #fff;
 }
 
 .btn-primary:hover {
-    background: #2980b9;
+    background: #001746;
 }
 
 .btn-primary:disabled {
@@ -92,12 +101,12 @@ h1 {
 }
 
 .btn-secondary {
-    background: #3498db;
+    background: var(--color-turquoise);
     color: #ffffff;
 }
 
 .btn-secondary:hover {
-    background: #237db8;
+    background: #008483;
 }
 
 .status {
@@ -133,7 +142,7 @@ h1 {
 }
 
 .findings-table th {
-    background: #f0f0f0;
+    background: var(--color-gray);
     font-weight: bold;
     text-align: center;
 }
@@ -145,15 +154,15 @@ h1 {
 }
 
 .error-container {
-    border-left: 4px solid #e74c3c;
+    border-left: 4px solid var(--color-pink);
 }
 
 .error-message {
-    background: #ffeaea;
+    background: rgba(255, 88, 103, 0.08);
     padding: 1rem;
     border-radius: 4px;
     margin: 1rem 0;
-    color: #c0392b;
+    color: var(--color-pink);
 }
 
 .result {
@@ -381,7 +390,10 @@ h1 {
     overflow: hidden;
 
     pointer-events: none;
-    box-sizing: border-box;
+granat → #001F5F
+róż → #FF5867
+turkus → #009BA1
+szary → #B2B2B2    box-sizing: border-box;
 }
 
 .pii-overlay-box.is-selected {
