@@ -381,15 +381,15 @@ h1 {
     overflow: hidden;
 
     pointer-events: none;
+    box-sizing: border-box;
 }
 
 .pii-overlay-box.is-selected {
-    border:
-        3px solid
-        rgba(0, 102, 255, 1);
-
+    /* Keep the base border so box size doesn't change on selection.
+       Use a box-shadow to highlight without affecting layout. */
     background:
         rgba(0, 102, 255, 0.30);
+    box-shadow: 0 0 0 3px rgba(0, 102, 255, 1) inset;
 }
 
 .pii-overlay-box.is-hidden {
