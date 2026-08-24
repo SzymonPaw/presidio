@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta name="robots" content="noindex">
 
-    <title>Anonimizator dokumentów | STBU.pl</title>
+    <title>Bez Śladu - Anonimizator dokumentów | STBU.pl</title>
 
     <link
         rel="stylesheet"
@@ -28,6 +28,12 @@
 
 <body>
     <div class="container">
+
+        <div class="header--logo">
+            <img src="{{ url_for('static', filename='img/logo.webp') }}" alt="Logo STBU" class="logo">
+            <img src="{{ url_for('static', filename='img/logo-stbu.webp') }}" alt="Logo STBU" class="logo">
+        </div>
+
         <h1>Anonimizator dokumentów | STBU</h1>
 
         <h2>
@@ -36,7 +42,7 @@
         </h2>
 
         <p class="subtitle">
-            Lokalne narzędzie do anonimizacji danych w dokumentach
+            Narzędzie do szybkiej anonimizacji dokumentów przed ich dalszym wykorzystaniem lub udostępnieniem. Automatycznie rozpoznaje i ukrywa dane osobowe, adresy, numery identyfikacyjne oraz informacje kontaktowe. Pozwala bezpiecznie pracować z dokumentami i ogranicza ryzyko przypadkowego ujawnienia poufnych informacji.
         </p>
 
         <form id="upload-form" class="upload-form">
