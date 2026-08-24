@@ -230,8 +230,9 @@ def _register_routes(app: Flask) -> None:
             "xlsx_storage",
             "xlsx_shared_index",
 
-            # DOCX - zostawiamy również na przyszłość /
-            # dla obecnego adaptera Word.
+            # DOCX
+            "part",
+            "location",
             "docx_part",
             "docx_story",
             "docx_paragraph",
@@ -406,6 +407,29 @@ def _register_routes(app: Flask) -> None:
             return jsonify({"findings": findings})
         except Exception as exc:
             return jsonify({"error": f"Blad podczas analizy: {str(exc)}"}), 500
+
+    @app.route("/preview-docx", methods=["POST"])
+    def preview_docx():
+        """Zwraca podgląd DOCX jako HTML, analogicznie do PDF.js."""
+        if "file" not in request.files:
+            return jsonify({"error": "Brak pliku"}), 400
+
+        file = request.files["file"]
+        if file.filename == "":
+            return jsonify({"error": "Pusta nazwa pliku"}), 400
+
+        filename_lower = file.filename.lower()
+        if not filename_lower.endswith(".docx"):
+            return jsonify({"error": "Ta ścieżka obsługuje wyłącznie DOCX."}), 400
+
+        file_bytes = file.read()
+        try:
+            findings = _get_findings_for_file(file_bytes, file.filename)
+            mode = request.form.get("preview_mode", "detections")
+            preview_html = docx_adapter.build_preview_html(file_bytes, findings, mode=mode)
+            return jsonify({"html": preview_html})
+        except Exception as exc:
+            return jsonify({"error": f"Blad podczas generowania podglądu DOCX: {str(exc)}"}), 500
 
     @app.route("/anonymize", methods=["POST"])
     def anonymize():

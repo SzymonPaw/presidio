@@ -111,6 +111,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     var currentFindings = [];
 
 
+    var modalIsOpen = false;
+
     var pdfPreviewState = {
         loadingTask: null,
         pdfDocument: null,
@@ -228,10 +230,14 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             selectedFile.name.toLowerCase().endsWith('.pdf') :
             /\.pdf$/i.test(selectedFile.name);
 
+        var isDocx = selectedFile && selectedFile.name.toLowerCase().endsWith ?
+            selectedFile.name.toLowerCase().endsWith('.docx') :
+            /\.docx$/i.test(selectedFile.name);
+
         var html = '<h2>Wykryte dane</h2>';
         html += '<table class="findings-table"><thead><tr><th>Typ</th><th>Znacznik</th><th>Pokrycie</th><th>Wystąpienia</th><th>Anonimizuj</th>';
         // html += '<table class="findings-table"><thead><tr><th>Typ</th><th>Znacznik</th><th>Siła</th><th>Powód</th><th>Liczba</th><th>Anonimizuj</th>';
-        if (isPdf) {
+        if (isPdf || isDocx) {
             html += '<th>Akcje</th>';
         }
         html += '</tr></thead><tbody>';
@@ -244,8 +250,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             // html += '<td>' + escapeHtml(f.reason) + '</td>';
             html += '<td>' + f.count + '</td>';
             html += '<td><div class="checkbox-wrapper-6"><input class="tgl tgl-light" id="cb1-6-' + f.id + '" type="checkbox" name="anonymize" value="' + f.id + '" checked><label class="tgl-btn" for="cb1-6-' + f.id + '"></label></div></td>';
-            if (isPdf) {
-                // Jeśli PDF, dajemy przycisk Pokaż z podanym numerem strony
+            if (isPdf || isDocx) {
+                // Wspólny przycisk podglądu dla PDF i DOCX.
                 html +=
                     '<td>'
                     + '<button '
@@ -264,7 +270,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         // Dodatkowy guzik "Podgląd całego dokumentu" jeśli to PDF
         html += '<div class="actions">';
         html += '<button id="confirm-btn" class="btn btn-primary"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><!--!Font Awesome Free v7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2026 Fonticons, Inc.--><path d="M352 96C352 78.3 337.7 64 320 64C302.3 64 288 78.3 288 96L288 306.7L246.6 265.3C234.1 252.8 213.8 252.8 201.3 265.3C188.8 277.8 188.8 298.1 201.3 310.6L297.3 406.6C309.8 419.1 330.1 419.1 342.6 406.6L438.6 310.6C451.1 298.1 451.1 277.8 438.6 265.3C426.1 252.8 405.8 252.8 393.3 265.3L352 306.7L352 96zM160 384C124.7 384 96 412.7 96 448L96 480C96 515.3 124.7 544 160 544L480 544C515.3 544 544 515.3 544 480L544 448C544 412.7 515.3 384 480 384L433.1 384L376.5 440.6C345.3 471.8 294.6 471.8 263.4 440.6L206.9 384L160 384zM464 440C477.3 440 488 450.7 488 464C488 477.3 477.3 488 464 488C450.7 488 440 477.3 440 464C440 450.7 450.7 440 464 440z"/></svg> Zatwierdź i pobierz</button>';
-        if (isPdf) {
+        if (isPdf || isDocx) {
             html += '<button id="full-preview-btn" class="btn btn-secondary"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><!--!Font Awesome Free v7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2026 Fonticons, Inc.--><path d="M320 144C254.8 144 201.2 173.6 160.1 211.7C121.6 247.5 95 290 81.4 320C95 350 121.6 392.5 160.1 428.3C201.2 466.4 254.8 496 320 496C385.2 496 438.8 466.4 479.9 428.3C518.4 392.5 545 350 558.6 320C545 290 518.4 247.5 479.9 211.7C438.8 173.6 385.2 144 320 144zM127.4 176.6C174.5 132.8 239.2 96 320 96C400.8 96 465.5 132.8 512.6 176.6C559.4 220.1 590.7 272 605.6 307.7C608.9 315.6 608.9 324.4 605.6 332.3C590.7 368 559.4 420 512.6 463.4C465.5 507.1 400.8 544 320 544C239.2 544 174.5 507.2 127.4 463.4C80.6 419.9 49.3 368 34.4 332.3C31.1 324.4 31.1 315.6 34.4 307.7C49.3 272 80.6 220 127.4 176.6zM320 400C364.2 400 400 364.2 400 320C400 290.4 383.9 264.5 360 250.7C358.6 310.4 310.4 358.6 250.7 360C264.5 383.9 290.4 400 320 400zM240.4 311.6C242.9 311.9 245.4 312 248 312C283.3 312 312 283.3 312 248C312 245.4 311.8 242.9 311.6 240.4C274.2 244.3 244.4 274.1 240.5 311.5zM286 196.6C296.8 193.6 308.2 192.1 319.9 192.1C328.7 192.1 337.4 193 345.7 194.7C346 194.8 346.2 194.8 346.5 194.9C404.4 207.1 447.9 258.6 447.9 320.1C447.9 390.8 390.6 448.1 319.9 448.1C258.3 448.1 206.9 404.6 194.7 346.7C192.9 338.1 191.9 329.2 191.9 320.1C191.9 309.1 193.3 298.3 195.9 288.1C196.1 287.4 196.2 286.8 196.4 286.2C208.3 242.8 242.5 208.6 285.9 196.7z"/></svg> Podgląd dokumentu</button>';
         }
         html += '</div>';
@@ -284,6 +290,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 button.addEventListener(
                     'click',
                     function () {
+                        if (isSelectedFileDocx()) {
+                            openDocxPreview(
+                                button.getAttribute(
+                                    'data-finding-id'
+                                )
+                            );
+                            return;
+                        }
+
                         openPdfPreview(
                             button.getAttribute(
                                 'data-finding-id'
@@ -304,6 +319,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             fullPreviewBtn.addEventListener(
                 'click',
                 function () {
+                    if (isSelectedFileDocx()) {
+                        openDocxPreview(
+                            null
+                        );
+                        return;
+                    }
+
                     openPdfPreview(
                         null
                     );
@@ -535,6 +557,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         return Boolean(
             selectedFile
             && /\.pdf$/i.test(
+                selectedFile.name
+            )
+        );
+    }
+
+    function isSelectedFileDocx() {
+        return Boolean(
+            selectedFile
+            && /\.docx$/i.test(
                 selectedFile.name
             )
         );
@@ -810,9 +841,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         }
 
 
-        setPreviewMode(
-            'detections'
-        );
+        pdfPreviewState.previewMode = 'detections';
+
+        if (previewModeDetectionsBtn) {
+            previewModeDetectionsBtn.classList.add('is-active');
+        }
+
+        if (previewModeOutputBtn) {
+            previewModeOutputBtn.classList.remove('is-active');
+        }
     }
 
     function waitForPdfLayoutReady(
@@ -1309,6 +1346,71 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     // Otwieranie / zamykanie
     // =========================================================
 
+    async function openDocxPreview(
+        findingId
+    ) {
+        if (!isSelectedFileDocx()) {
+            return;
+        }
+
+        modalIsOpen = true;
+
+        document.body.classList.add(
+            'pdf-preview-open'
+        );
+
+        modal.style.display =
+            'flex';
+
+        modal.setAttribute(
+            'aria-hidden',
+            'false'
+        );
+
+        statusDiv.textContent =
+            'Ładowanie podglądu DOCX...';
+
+        try {
+            var formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('preview_mode', pdfPreviewState.previewMode || 'detections');
+
+            var response = await fetch('/preview-docx', {
+                method: 'POST',
+                body: formData
+            });
+            var payload = await response.json();
+
+            if (!response.ok || payload.error) {
+                throw new Error(payload.error || 'Błąd podglądu DOCX.');
+            }
+
+            if (pdfViewerElement) {
+                pdfViewerElement.innerHTML = payload.html || '<div class="docx-preview-empty">Brak treści do podglądu.</div>';
+                pdfViewerElement.classList.add('docx-preview-container');
+            }
+
+            if (pdfCurrentPage) {
+                pdfCurrentPage.textContent = '1';
+            }
+
+            if (pdfPageCount) {
+                pdfPageCount.textContent = '1';
+            }
+
+            renderPdfFindingsSidebar();
+            refreshDocxPreviewState();
+            if (findingId) {
+                focusDocxFinding(findingId);
+            }
+
+            statusDiv.textContent = '';
+        } catch (error) {
+            statusDiv.textContent = 'Błąd podglądu DOCX.';
+            console.error(error);
+        }
+    }
+
     async function openPdfPreview(
         findingId
     ) {
@@ -1371,6 +1473,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 
     function closePdfPreview() {
+        modalIsOpen = false;
 
         modal.style.display =
             'none';
@@ -1397,6 +1500,29 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     // =========================================================
     // Overlay Presidio
     // =========================================================
+
+    function refreshDocxPreviewState() {
+        if (!pdfViewerElement || !isSelectedFileDocx()) {
+            return;
+        }
+
+        var outputMode = (pdfPreviewState.previewMode || 'detections') === 'output';
+
+        pdfViewerElement.querySelectorAll('.docx-hit').forEach(function (hit) {
+            var findingId = hit.dataset.docxFindingId;
+            if (!findingId) {
+                return;
+            }
+
+            var finding = getFindingById(findingId);
+            var active = Boolean(finding && isFindingActive(findingId));
+            var selected = String(pdfPreviewState.selectedFindingId) === String(findingId);
+            var hiddenInOutput = outputMode && !active;
+
+            hit.classList.toggle('is-hidden', hiddenInOutput);
+            hit.classList.toggle('is-selected', selected && !hiddenInOutput);
+        });
+    }
 
     function renderPdfOverlayForPage(
         pageIndex
@@ -1963,6 +2089,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                             button.dataset
                                 .findingId
                         );
+
+                        if (isSelectedFileDocx()) {
+                            refreshDocxPreviewState();
+                        }
                     }
                 );
             }
@@ -1988,6 +2118,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
                             checkbox.checked
                         );
+
+                        if (isSelectedFileDocx()) {
+                            refreshDocxPreviewState();
+                        }
                     }
                 );
             }
@@ -2012,6 +2146,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                                 .findingId,
                             -1
                         );
+
+                        if (isSelectedFileDocx()) {
+                            refreshDocxPreviewState();
+                        }
                     }
                 );
             }
@@ -2036,6 +2174,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                                 .findingId,
                             1
                         );
+
+                        if (isSelectedFileDocx()) {
+                            refreshDocxPreviewState();
+                        }
                     }
                 );
             }
@@ -2292,6 +2434,14 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 'click',
                 function (event) {
 
+                    if (isSelectedFileDocx()) {
+                        var hit = event.target.closest('.docx-hit');
+                        if (hit && hit.dataset.docxFindingId) {
+                            focusDocxFinding(hit.dataset.docxFindingId);
+                        }
+                        return;
+                    }
+
                     var clickedBox =
                         getPdfOverlayAtPoint(
                             event.clientX,
@@ -2321,6 +2471,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 'mousemove',
                 function (event) {
 
+                    if (isSelectedFileDocx()) {
+                        return;
+                    }
+
                     var hoveredBox =
                         getPdfOverlayAtPoint(
                             event.clientX,
@@ -2344,6 +2498,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             .addEventListener(
                 'mouseleave',
                 function () {
+
+                    if (isSelectedFileDocx()) {
+                        return;
+                    }
 
                     pdfViewerContainer
                         .classList
@@ -2409,9 +2567,89 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     }
 
 
+    function focusDocxFinding(
+        findingId
+    ) {
+        var finding =
+            getFindingById(
+                findingId
+            );
+
+        if (!finding || !pdfViewerElement) {
+            return;
+        }
+
+        var occurrences =
+            getFindingOccurrences(
+                finding
+            );
+
+        var current =
+            pdfPreviewState
+                .occurrenceIndex[
+                    findingId
+                ] || 0;
+
+        if (occurrences.length) {
+            if (current >= occurrences.length) {
+                current = 0;
+            }
+            pdfPreviewState.occurrenceIndex[findingId] = current;
+        }
+
+        pdfPreviewState.selectedFindingId = findingId;
+        renderPdfFindingsSidebar();
+
+        requestAnimationFrame(function () {
+            scrollPdfSidebarToFinding(findingId);
+        });
+
+        pdfViewerElement.querySelectorAll('.docx-hit').forEach(function (hit) {
+            hit.classList.remove('is-selected');
+        });
+
+        var docxHits = Array.from(
+            pdfViewerElement.querySelectorAll(
+                '.docx-hit[data-docx-finding-id="' + String(findingId) + '"]'
+            )
+        );
+
+        if (docxHits.length) {
+            var activeIndex = Math.min(
+                current,
+                docxHits.length - 1
+            );
+            var hit = docxHits[activeIndex];
+            if (hit) {
+                hit.classList.add('is-selected');
+
+                if (pdfViewerContainer && typeof hit.getBoundingClientRect === 'function') {
+                    var hitRect = hit.getBoundingClientRect();
+                    var containerRect = pdfViewerContainer.getBoundingClientRect();
+                    var targetScrollTop = pdfViewerContainer.scrollTop + (hitRect.top - containerRect.top) - (containerRect.height * 0.35);
+
+                    pdfViewerContainer.scrollTo({
+                        top: Math.max(0, targetScrollTop),
+                        behavior: 'smooth'
+                    });
+                } else {
+                    hit.scrollIntoView({
+                        block: 'nearest',
+                        behavior: 'smooth'
+                    });
+                }
+            }
+        }
+    }
+
     function focusPdfFinding(
         findingId
     ) {
+
+        if (isSelectedFileDocx()) {
+            focusDocxFinding(findingId);
+            return;
+        }
 
         var finding =
             getFindingById(
@@ -2908,6 +3146,16 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 );
         }
 
+        if (isSelectedFileDocx()) {
+            if (modalIsOpen) {
+                openDocxPreview(
+                    pdfPreviewState.selectedFindingId
+                );
+            } else {
+                refreshDocxPreviewState();
+            }
+            return;
+        }
 
         refreshPdfOverlayState();
     }
@@ -2947,10 +3195,39 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     // Wyszukiwanie
     // =========================================================
 
+    function applyDocxSearch(query) {
+        if (!pdfViewerElement || !pdfSearchInput) {
+            return;
+        }
+
+        var q = (query || '').trim().toLowerCase();
+        var hits = pdfViewerElement.querySelectorAll('.docx-hit');
+
+        hits.forEach(function (hit) {
+            if (!q) {
+                hit.classList.remove('is-search-match');
+                hit.style.background = '';
+                return;
+            }
+
+            var text = hit.textContent || '';
+            var match = text.toLowerCase().indexOf(q) !== -1;
+            hit.classList.toggle('is-search-match', match);
+            hit.style.background = match ? 'rgba(52, 152, 219, 0.2)' : '';
+        });
+    }
+
     function dispatchPdfSearch(
         findPrevious,
         type
     ) {
+
+        if (isSelectedFileDocx()) {
+            if (pdfSearchInput) {
+                applyDocxSearch(pdfSearchInput.value);
+            }
+            return;
+        }
 
         if (
             !pdfPreviewState.eventBus

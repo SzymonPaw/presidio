@@ -21,10 +21,12 @@ class AnonymizationService:
         page: Any = None,
         bbox: Any = None,
         reason: str = "Reguła z silnika",
+        part: Any = None,
+        location: Any = None,
     ) -> Dict[str, Any]:
         """Tworzy ujednolicony słownik finding z automatycznym przypisaniem markera."""
         marker = self.marker_registry.get_marker(entity_type, raw_value)
-        return {
+        finding = {
             "entity_type": entity_type,
             "marker": marker,
             "score": score,
@@ -34,6 +36,11 @@ class AnonymizationService:
             "bbox": bbox,
             "count": 1,
         }
+        if part is not None:
+            finding["part"] = part
+        if location is not None:
+            finding["location"] = location
+        return finding
 
     # ------------------------------------------------------------------
     # PDF
@@ -79,6 +86,8 @@ class AnonymizationService:
                     rf["score"],
                     page=rf.get("part", "DOCX"),
                     bbox=rf.get("location"),
+                    part=rf.get("part"),
+                    location=rf.get("location"),
                 )
             )
         return all_findings
