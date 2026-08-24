@@ -128,3 +128,47 @@ def test_xlsx_shared_strings_anonymize():
     assert "Jan Kowalski" not in out_xml
     assert "[OSOBA_X]" in out_xml
 
+
+def test_xlsx_preview_renders_sheet_tabs_for_multiple_worksheets():
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", b"""<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>""")
+        zf.writestr("xl/workbook.xml", b"""<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Arkusz 1" sheetId="1" r:id="rId1"/>
+    <sheet name="Arkusz 2" sheetId="2" r:id="rId2"/>
+  </sheets>
+</workbook>""")
+        zf.writestr("xl/_rels/workbook.xml.rels", b"""<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
+</Relationships>""")
+        zf.writestr("xl/worksheets/sheet1.xml", b"""<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Jan Kowalski</t></is></c></row>
+  </sheetData>
+</worksheet>""")
+        zf.writestr("xl/worksheets/sheet2.xml", b"""<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Anna Nowak</t></is></c></row>
+  </sheetData>
+</worksheet>""")
+
+    html = XlsxAdapter().build_preview_html(buf.getvalue(), [{"raw_value": "Jan Kowalski", "xlsx_cell": "A1"}], mode="detections")
+
+    assert "xlsx-sheet-tab" in html
+    assert "Arkusz 1" in html
+    assert "Arkusz 2" in html
+    assert html.count("xlsx-sheet-panel") >= 2
+

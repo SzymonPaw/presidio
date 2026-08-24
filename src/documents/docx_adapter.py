@@ -292,15 +292,25 @@ class DocxAdapter:
         except SecurityError:
             return theme_map
 
+        relevant_keys = {
+            "dk1", "lt1", "dk2", "lt2",
+            "accent1", "accent2", "accent3", "accent4", "accent5", "accent6",
+            "hlink", "folHlink",
+            "tx1", "tx2", "bg1", "bg2",
+        }
+
         try:
             for node in theme_root.iter():
-                if node.tag.endswith("}srgbClr"):
-                    val = node.get("val")
-                    if val:
-                        theme_map[node.tag.rsplit("}", 1)[-1]] = f"#{val}"
-            for node in theme_root.iter():
-                if node.tag.endswith("}scheme"):
+                local_name = node.tag.rsplit("}", 1)[-1] if "}" in node.tag else node.tag
+                if local_name not in relevant_keys:
                     continue
+                for child in node.iter():
+                    child_name = child.tag.rsplit("}", 1)[-1] if "}" in child.tag else child.tag
+                    if child_name == "srgbClr":
+                        val = child.get("val")
+                        if val:
+                            theme_map[local_name] = f"#{val}"
+                            break
         except Exception:
             pass
 
@@ -318,6 +328,10 @@ class DocxAdapter:
                 "accent6": "#f79646",
                 "hlink": "#0000ff",
                 "folHlink": "#800080",
+                "tx1": "#000000",
+                "tx2": "#1f1f1f",
+                "bg1": "#ffffff",
+                "bg2": "#f5f5f5",
             }
 
         return theme_map
@@ -331,9 +345,7 @@ class DocxAdapter:
             return None
 
         if theme_map and value.startswith("theme"):
-            key = value.replace("theme", "")
-            if key.startswith("-"):
-                key = key[1:]
+            key = value.replace("theme", "").lstrip("-")
             if key in theme_map:
                 return theme_map[key]
 

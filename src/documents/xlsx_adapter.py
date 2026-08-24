@@ -380,6 +380,240 @@ class XlsxAdapter:
 
         return matches
 
+    def build_preview_html(
+        self,
+        xlsx_bytes: bytes,
+        findings: List[Dict[str, Any]] | None = None,
+        mode: str = "detections",
+    ) -> str:
+        """Buduje HTML podglądu arkusza XLSX z zachowaniem prostych tabel i podświetleń wykryć."""
+        findings = findings or []
+        try:
+            zf = open_ooxml_package(xlsx_bytes)
+        except SecurityError as exc:
+            raise ValueError(f"Odrzucono dokument: {exc}") from exc
+
+        try:
+            workbook_tree = read_xml_part(zf, "xl/workbook.xml")
+        except SecurityError:
+            return '<div class="docx-preview-empty">Nie udało się odczytać treści arkusza Excel.</div>'
+
+        rels: Dict[str, str] = {}
+        try:
+            rels_tree = read_xml_part(zf, "xl/_rels/workbook.xml.rels")
+            for rel in rels_tree.iterfind(f"{{http://schemas.openxmlformats.org/package/2006/relationships}}Relationship"):
+                rel_id = rel.get("Id")
+                target = rel.get("Target")
+                if rel_id and target:
+                    rels[rel_id] = target
+        except SecurityError:
+            rels = {}
+
+        sheet_labels: Dict[str, str] = {}
+        for sheet in workbook_tree.iter(f"{S_NS}sheet"):
+            rel_id = sheet.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
+            target = rels.get(rel_id)
+            if not target:
+                continue
+            if target.startswith("/"):
+                target = target[1:]
+            if target.startswith("../"):
+                target = target[3:]
+            if not target.startswith("xl/"):
+                target = "xl/" + target.lstrip("/")
+            if target in zf.namelist():
+                sheet_labels[target] = sheet.get("name") or f"Arkusz {len(sheet_labels) + 1}"
+
+        _, shared_values = self._load_shared_strings(zf)
+        sheet_paths: List[str] = []
+        seen_sheet_paths = set()
+        for target in sorted(sheet_labels.keys()):
+            if target not in seen_sheet_paths:
+                sheet_paths.append(target)
+                seen_sheet_paths.add(target)
+
+        if not sheet_paths:
+            fallback_sheets = sorted(
+                name for name in zf.namelist()
+                if name.startswith("xl/worksheets/") and name.endswith(".xml")
+            )
+            for candidate in fallback_sheets:
+                if candidate not in seen_sheet_paths:
+                    sheet_paths.append(candidate)
+                    seen_sheet_paths.add(candidate)
+
+        if not sheet_paths:
+            return '<div class="docx-preview-empty">Dokument Excel nie zawiera widocznych danych do podglądu.</div>'
+
+        finding_map: Dict[str, List[Dict[str, Any]]] = {}
+        for finding in findings:
+            raw_value = str(finding.get("raw_value", "")).strip()
+            if not raw_value:
+                continue
+
+            key = None
+            part_name = str(finding.get("xlsx_part") or "")
+            cell_ref = str(finding.get("xlsx_cell") or "")
+            if part_name and cell_ref:
+                key = f"{part_name}!{cell_ref}"
+            elif cell_ref:
+                key = cell_ref
+            else:
+                location = str(finding.get("location", ""))
+                if "!" in location:
+                    part_name, cell_ref = location.rsplit("!", 1)
+                    key = f"{part_name}!{cell_ref}"
+                    cell_ref = cell_ref
+                elif location:
+                    key = location
+            if not key:
+                continue
+            finding_map.setdefault(key, []).append(finding)
+
+        sheet_panels: List[str] = []
+        for index, part_name in enumerate(sheet_paths):
+            try:
+                tree = read_xml_part(zf, part_name)
+            except SecurityError:
+                continue
+
+            rows: Dict[int, Dict[int, str]] = {}
+            for cell in tree.iter(f"{SNS}c"):
+                cell_ref = cell.get("r")
+                if not cell_ref:
+                    continue
+                text, _storage, _shared_index = self._cell_text(cell, shared_values)
+                if not text:
+                    continue
+                row_index, col_index = self._cell_coord(cell_ref)
+                rows.setdefault(row_index, {})[col_index] = text
+
+            if not rows:
+                continue
+
+            max_row = max(rows)
+            max_col = max(max(row.items(), key=lambda item: item[0])[0] for row in rows.values()) if rows else 0
+            table_rows: List[str] = []
+            for row_index in range(1, max_row + 1):
+                cells: List[str] = []
+                for col_index in range(1, max_col + 1):
+                    text = rows.get(row_index, {}).get(col_index, "")
+                    if not text:
+                        cell_html = "<td class=\"xlsx-preview-cell\">&nbsp;</td>"
+                    else:
+                        cell_ref = self._cell_reference(col_index, row_index)
+                        cell_key = f"{part_name}!{cell_ref}"
+                        cell_findings = finding_map.get(cell_key, finding_map.get(cell_ref, []))
+                        rendered = self._render_cell_value(text, cell_findings, mode)
+                        cell_html = f'<td class="xlsx-preview-cell">{rendered}</td>'
+                    cells.append(cell_html)
+                table_rows.append(f'<tr>{"".join(cells)}</tr>')
+
+            if table_rows:
+                sheet_label = sheet_labels.get(part_name, f"Arkusz {index + 1}")
+                is_active = ' is-active' if index == 0 else ''
+                sheet_panels.append(
+                    '<section class="xlsx-sheet-panel' + is_active + '" data-sheet-name="' + self._escape_attr(sheet_label) + '">'
+                    + '<div class="xlsx-sheet-header">' + self._escape_text(sheet_label) + '</div>'
+                    + '<table class="xlsx-preview-table">' + ''.join(table_rows) + '</table>'
+                    + '</section>'
+                )
+
+        if not sheet_panels:
+            return '<div class="docx-preview-empty">Dokument Excel nie zawiera widocznych danych do podglądu.</div>'
+
+        tab_buttons = []
+        for index, part_name in enumerate(sheet_paths):
+            label = sheet_labels.get(part_name, f"Arkusz {index + 1}")
+            active = ' is-active' if index == 0 else ''
+            tab_buttons.append(
+                '<button type="button" class="xlsx-sheet-tab' + active + '" data-sheet-name="' + self._escape_attr(label) + '">' + self._escape_text(label) + '</button>'
+            )
+
+        return (
+            '<div class="docx-preview-document xlsx-preview-container xlsx-preview-workbook">'
+            + '<div class="xlsx-sheet-tabs">' + ''.join(tab_buttons) + '</div>'
+            + '<div class="xlsx-sheet-panels">' + ''.join(sheet_panels) + '</div>'
+            + '</div>'
+        )
+
+    @staticmethod
+    def _cell_coord(cell_ref: str) -> Tuple[int, int]:
+        ref = cell_ref.strip()
+        letters = []
+        for ch in ref:
+            if ch.isalpha():
+                letters.append(ch)
+            else:
+                break
+        digits = ref[len(letters):]
+        col = 0
+        for ch in letters:
+            col = col * 26 + (ord(ch.upper()) - 64)
+        return int(digits), col
+
+    @staticmethod
+    def _cell_reference(col_index: int, row_index: int) -> str:
+        letters = []
+        current = col_index
+        while current > 0:
+            current, rem = divmod(current - 1, 26)
+            letters.append(chr(65 + rem))
+        return "".join(reversed(letters)) + str(row_index)
+
+    def _render_cell_value(
+        self,
+        text: str,
+        findings: List[Dict[str, Any]],
+        mode: str,
+    ) -> str:
+        """Renderuje pojedynczą wartość komórki z highlightem wykryć i fallbackiem do danych."""
+        if not text:
+            return "&nbsp;"
+
+        normalized: Dict[str, Dict[str, Any]] = {}
+        for finding in findings:
+            raw = str(finding.get("raw_value") or "").strip()
+            if raw:
+                normalized.setdefault(raw.lower(), finding)
+
+        if not normalized:
+            return self._escape_text(text)
+
+        pattern = re.compile("|".join(re.escape(raw) for raw in sorted(normalized.keys(), key=len, reverse=True)), re.IGNORECASE)
+        parts: List[str] = []
+        last = 0
+
+        for match in pattern.finditer(text):
+            start, end = match.span()
+            if start > last:
+                parts.append(self._escape_text(text[last:start]))
+            raw = match.group(0)
+            finding = normalized.get(raw.lower()) or normalized.get(raw.casefold())
+            if not finding:
+                parts.append(self._escape_text(raw))
+            else:
+                marker = str(finding.get("marker") or raw).strip() or raw
+                display = marker if mode == "output" else raw
+                finding_id = finding.get("id")
+                attrs = f' data-xlsx-finding-id="{self._escape_attr(str(finding_id))}"' if finding_id is not None else ""
+                class_name = "xlsx-hit is-output" if mode == "output" else "xlsx-hit"
+                parts.append(f'<mark class="{class_name}"{attrs}>{self._escape_text(display)}</mark>')
+            last = end
+
+        if last < len(text):
+            parts.append(self._escape_text(text[last:]))
+
+        return "".join(parts)
+
+    @staticmethod
+    def _escape_text(value: str) -> str:
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    @staticmethod
+    def _escape_attr(value: str) -> str:
+        return value.replace('&', '&amp;').replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
+
     def anonymize(
         self,
         xlsx_bytes: bytes,

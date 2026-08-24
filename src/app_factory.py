@@ -431,6 +431,29 @@ def _register_routes(app: Flask) -> None:
         except Exception as exc:
             return jsonify({"error": f"Blad podczas generowania podglądu DOCX: {str(exc)}"}), 500
 
+    @app.route("/preview-xlsx", methods=["POST"])
+    def preview_xlsx():
+        """Zwraca podgląd XLSX jako HTML w tym samym modelu co PDF/DOCX."""
+        if "file" not in request.files:
+            return jsonify({"error": "Brak pliku"}), 400
+
+        file = request.files["file"]
+        if file.filename == "":
+            return jsonify({"error": "Pusta nazwa pliku"}), 400
+
+        filename_lower = file.filename.lower()
+        if not filename_lower.endswith(".xlsx"):
+            return jsonify({"error": "Ta ścieżka obsługuje wyłącznie XLSX."}), 400
+
+        file_bytes = file.read()
+        try:
+            findings = _get_findings_for_file(file_bytes, file.filename)
+            mode = request.form.get("preview_mode", "detections")
+            preview_html = xlsx_adapter.build_preview_html(file_bytes, findings, mode=mode)
+            return jsonify({"html": preview_html})
+        except Exception as exc:
+            return jsonify({"error": f"Blad podczas generowania podglądu XLSX: {str(exc)}"}), 500
+
     @app.route("/anonymize", methods=["POST"])
     def anonymize():
         """Trasa anonimizacji pliku."""
