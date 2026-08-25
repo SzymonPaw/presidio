@@ -348,7 +348,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     'change',
                     function () {
                         renderPdfFindingsSidebar();
-                        refreshPdfOverlayState();
+                        if (isSelectedFileDocx() || isSelectedFileXlsx()) {
+                            refreshDocxPreviewState();
+                        } else {
+                            refreshPdfOverlayState();
+                        }
                     }
                 );
             }
@@ -1533,11 +1537,53 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
             var finding = getFindingById(findingId);
             var active = Boolean(finding && isFindingActive(findingId));
-            var selected = String(pdfPreviewState.selectedFindingId) === String(findingId);
-            var hiddenInOutput = outputMode && !active;
+            var selected = String(pdfPreviewState.selectedFindingId) === String(findingId) && (active || outputMode);
 
-            hit.classList.toggle('is-hidden', hiddenInOutput);
-            hit.classList.toggle('is-selected', selected && !hiddenInOutput);
+            // Output mode: if anonymize enabled (active) -> show marker (is-output).
+            // If anonymize disabled (not active) -> show raw value as plain text (do not hide).
+            if (outputMode) {
+                if (active) {
+                    // show marker
+                    hit.classList.remove('is-muted');
+                    hit.classList.remove('is-hidden');
+                    hit.classList.add('is-output');
+                    // ensure displayed value is the marker
+                    try {
+                        var marker = (finding && finding.marker) || null;
+                        if (marker !== null && marker !== undefined) {
+                            hit.textContent = String(marker);
+                        }
+                    } catch (e) {
+                        // ignore
+                    }
+                    hit.classList.toggle('is-selected', selected);
+                } else {
+                    // show raw value as plain text
+                    hit.classList.remove('is-output');
+                    hit.classList.remove('is-search-match');
+                    hit.classList.remove('is-selected');
+                    hit.classList.remove('is-hidden');
+                    hit.classList.add('is-muted');
+                    try {
+                        var rawv = (finding && (finding.raw_value || finding.rawValue || finding.rawValue)) || null;
+                        if (rawv === null || rawv === undefined) {
+                            // fall back to marker or existing text
+                            rawv = (finding && finding.marker) || hit.textContent;
+                        }
+                        hit.textContent = String(rawv);
+                    } catch (e) {
+                        // ignore
+                    }
+                }
+                return;
+            }
+
+            // Detections mode: non-active findings shown as muted plain text, active may be selected
+            var mutedInDetections = !active;
+            hit.classList.toggle('is-hidden', false);
+            hit.classList.toggle('is-output', false);
+            hit.classList.toggle('is-muted', mutedInDetections);
+            hit.classList.toggle('is-selected', String(pdfPreviewState.selectedFindingId) === String(findingId) && !mutedInDetections);
         });
     }
 
@@ -2133,7 +2179,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                                 .findingId
                         );
 
-                        if (isSelectedFileDocx()) {
+                        if (isSelectedFileDocx() || isSelectedFileXlsx()) {
                             refreshDocxPreviewState();
                         }
                     }
@@ -2162,7 +2208,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                             checkbox.checked
                         );
 
-                        if (isSelectedFileDocx()) {
+                        if (isSelectedFileDocx() || isSelectedFileXlsx()) {
                             refreshDocxPreviewState();
                         }
                     }
@@ -2190,7 +2236,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                             -1
                         );
 
-                        if (isSelectedFileDocx()) {
+                        if (isSelectedFileDocx() || isSelectedFileXlsx()) {
                             refreshDocxPreviewState();
                         }
                     }
@@ -2218,7 +2264,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                             1
                         );
 
-                        if (isSelectedFileDocx()) {
+                        if (isSelectedFileDocx() || isSelectedFileXlsx()) {
                             refreshDocxPreviewState();
                         }
                     }
@@ -2477,10 +2523,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 'click',
                 function (event) {
 
-                    if (isSelectedFileDocx()) {
-                        var hit = event.target.closest('.docx-hit');
-                        if (hit && hit.dataset.docxFindingId) {
-                            focusDocxFinding(hit.dataset.docxFindingId);
+                    if (isSelectedFileDocx() || isSelectedFileXlsx()) {
+                        var hit = event.target.closest('.docx-hit, .xlsx-hit');
+                        if (hit) {
+                            var id = hit.dataset.docxFindingId || hit.dataset.xlsxFindingId;
+                            if (id) {
+                                focusDocxFinding(id);
+                            }
                         }
                         return;
                     }
@@ -2514,7 +2563,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 'mousemove',
                 function (event) {
 
-                    if (isSelectedFileDocx()) {
+                    if (isSelectedFileDocx() || isSelectedFileXlsx()) {
                         return;
                     }
 
@@ -2542,7 +2591,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 'mouseleave',
                 function () {
 
-                    if (isSelectedFileDocx()) {
+                    if (isSelectedFileDocx() || isSelectedFileXlsx()) {
                         return;
                     }
 
@@ -2689,7 +2738,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         findingId
     ) {
 
-        if (isSelectedFileDocx()) {
+        if (isSelectedFileDocx() || isSelectedFileXlsx()) {
             focusDocxFinding(findingId);
             return;
         }
@@ -3244,7 +3293,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         }
 
         var q = (query || '').trim().toLowerCase();
-        var hits = pdfViewerElement.querySelectorAll('.docx-hit');
+        var hits = pdfViewerElement.querySelectorAll('.docx-hit, .xlsx-hit');
 
         hits.forEach(function (hit) {
             if (!q) {
@@ -3265,12 +3314,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         type
     ) {
 
-        if (isSelectedFileDocx()) {
-            if (pdfSearchInput) {
-                applyDocxSearch(pdfSearchInput.value);
+        if (isSelectedFileDocx() || isSelectedFileXlsx()) {
+                if (pdfSearchInput) {
+                    applyDocxSearch(pdfSearchInput.value);
+                }
+                return;
             }
-            return;
-        }
 
         if (
             !pdfPreviewState.eventBus

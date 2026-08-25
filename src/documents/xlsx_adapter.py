@@ -446,11 +446,38 @@ class XlsxAdapter:
             return '<div class="docx-preview-empty">Dokument Excel nie zawiera widocznych danych do podglądu.</div>'
 
         finding_map: Dict[str, List[Dict[str, Any]]] = {}
+
         for finding in findings:
             raw_value = str(finding.get("raw_value", "")).strip()
             if not raw_value:
                 continue
 
+            # 1) If finding already has explicit xlsx_part/xlsx_cell, use it.
+            part_name = finding.get("xlsx_part")
+            cell_ref = finding.get("xlsx_cell")
+            if part_name and cell_ref:
+                key = f"{part_name}!{cell_ref}"
+                finding_map.setdefault(key, []).append(finding)
+                # continue to next finding (we still allow occurrences below but explicit mapping is primary)
+                continue
+
+            # 2) If backend provided per-occurrence locations, honor them.
+            occurrences = finding.get("occurrences")
+            if isinstance(occurrences, list) and occurrences:
+                for occ in occurrences:
+                    if not isinstance(occ, dict):
+                        continue
+                    # Merge occurrence info with finding to preserve any extra keys
+                    merged = dict(finding)
+                    merged.update(occ)
+                    p, c = self._finding_target(merged)
+                    if p and c:
+                        key = f"{p}!{c}"
+                        finding_map.setdefault(key, []).append(merged)
+                # continue to next finding after processing occurrences
+                continue
+
+            # 3) Fallback: try to derive from location or cell-only
             key = None
             part_name = str(finding.get("xlsx_part") or "")
             cell_ref = str(finding.get("xlsx_cell") or "")
@@ -463,11 +490,12 @@ class XlsxAdapter:
                 if "!" in location:
                     part_name, cell_ref = location.rsplit("!", 1)
                     key = f"{part_name}!{cell_ref}"
-                    cell_ref = cell_ref
                 elif location:
                     key = location
+
             if not key:
                 continue
+
             finding_map.setdefault(key, []).append(finding)
 
         sheet_panels: List[str] = []
