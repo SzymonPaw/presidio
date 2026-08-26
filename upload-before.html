@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta name="robots" content="noindex">
+
+    <title>Bez Śladu - Anonimizator dokumentów | STBU.pl</title>
+
+    <link
+        rel="stylesheet"
+        href="./static/css/app.css"
+    >
+
+    <link
+        rel="shortcut icon"
+        href="/static/img/favicon.webp"
+        type="image/x-icon"
+    >
+</head>
+
+<body>
+    <div class="container">
+
+        <div class="header--logo">
+            <img src="./static/img/logo.webp" alt="Logo STBU" class="logo">
+            <img src="./static/img/logo-stbu.webp" alt="Logo STBU" class="logo">
+        </div>
+
+        <h1>Anonimizator dokumentów | STBU</h1>
+
+        <h2>
+            Po zakończeniu procesu usuwania wrażliwych danych,
+            sprawdź efekt działania narzędzia!
+        </h2>
+
+        <p class="subtitle">
+            Narzędzie do szybkiej anonimizacji dokumentów przed ich dalszym wykorzystaniem lub udostępnieniem. Automatycznie rozpoznaje i ukrywa dane osobowe, adresy, numery identyfikacyjne oraz informacje kontaktowe. Pozwala bezpiecznie pracować z dokumentami i ogranicza ryzyko przypadkowego ujawnienia poufnych informacji.
+        </p>
+
+        <form id="upload-form" class="upload-form">
+            <label for="file-input" class="file-label">
+                <span>
+                    Wybierz plik (PDF, DOCX, XLSX)
+                    lub przeciągnij tutaj
+                </span>
+
+                <input
+                    type="file"
+                    id="file-input"
+                    name="file"
+                    class="file-input"
+                    accept=".pdf,.docx,.xlsx"
+                    hidden
+                >
+            </label>
+
+            <div id="file-info" class="file-info">Wybrany plik: Presidio_test_WORD.docx (35.8 KB)</div>
+
+            <button
+                type="submit"
+                id="analyze-btn"
+                class="btn btn-primary"
+                disabled
+            >
+                Analizuj
+            </button>
+        </form>
+
+        <div id="status" class="status"></div>
+        <div id="findings" class="findings"></div>
+        <div id="result" class="result"></div>
+    </div>
+
+    <!-- =========================================================
+         PDF.js - pełny podgląd dokumentu
+         ========================================================= -->
+    <div
+        id="preview-modal"
+        class="modal"
+        style="display:none;"
+        aria-hidden="true"
+    >
+        <div class="pdf-preview-shell">
+
+            <div class="pdf-preview-toolbar">
+
+                <div class="pdf-preview-title">
+                    <strong>Podgląd dokumentu</strong>
+
+                    <span class="pdf-page-indicator">
+                        Strona
+                        <span id="pdf-current-page">1</span>
+                        /
+                        <span id="pdf-page-count">0</span>
+                    </span>
+                </div>
+
+                <div
+                    class="pdf-preview-mode"
+                    role="group"
+                    aria-label="Tryb podglądu"
+                >
+                    <button
+                        type="button"
+                        id="preview-mode-detections"
+                        class="pdf-mode-btn is-active"
+                    >
+                        Wykrycia
+                    </button>
+
+                    <button
+                        type="button"
+                        id="preview-mode-output"
+                        class="pdf-mode-btn"
+                    >
+                        Po anonimizacji
+                    </button>
+                </div>
+
+                <div class="pdf-search">
+                    <input
+                        type="text"
+                        id="pdf-search-input"
+                        placeholder="Szukaj w dokumencie..."
+                        autocomplete="off"
+                    >
+
+                    <button
+                        type="button"
+                        id="pdf-search-prev"
+                        class="btn btn-secondary btn-sm"
+                        title="Poprzedni wynik"
+                    >
+                        ↑
+                    </button>
+
+                    <button
+                        type="button"
+                        id="pdf-search-next"
+                        class="btn btn-secondary btn-sm"
+                        title="Następny wynik"
+                    >
+                        ↓
+                    </button>
+                </div>
+
+                <div class="pdf-zoom-controls">
+                    <button
+                        type="button"
+                        id="pdf-zoom-out"
+                        class="btn btn-secondary btn-sm"
+                        title="Pomniejsz"
+                    >
+                        −
+                    </button>
+
+                    <span id="pdf-zoom-value">100%</span>
+
+                    <button
+                        type="button"
+                        id="pdf-zoom-in"
+                        class="btn btn-secondary btn-sm"
+                        title="Powiększ"
+                    >
+                        +
+                    </button>
+
+                    <button
+                        type="button"
+                        id="pdf-zoom-fit"
+                        class="btn btn-secondary btn-sm"
+                    >
+                        Dopasuj
+                    </button>
+                </div>
+
+                <button
+                    type="button"
+                    class="close-btn"
+                    aria-label="Zamknij podgląd"
+                    title="Zamknij"
+                >
+                    &times;
+                </button>
+            </div>
+
+            <div class="pdf-preview-layout">
+
+                <div class="pdf-viewer-pane">
+                    <div
+                        id="pdf-viewer-container"
+                        tabindex="0"
+                    >
+                        <div
+                            id="pdf-viewer"
+                            class="pdfViewer"
+                        ></div>
+                    </div>
+                </div>
+
+                <aside class="pdf-findings-sidebar">
+
+                    <div class="pdf-findings-sidebar-header">
+                        <strong>Wykryte dane</strong>
+
+                        <span>
+                            Kliknij element, aby przejść
+                            do jego wystąpienia.
+                        </span>
+                    </div>
+
+                    <div id="pdf-findings-list"></div>
+
+                </aside>
+            </div>
+        </div>
+    </div>
+
+    <script
+        type="module"
+        src="./static/js/app.js"
+    ></script>
+</body>
+</html>
