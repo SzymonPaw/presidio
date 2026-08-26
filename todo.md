@@ -10,7 +10,7 @@
 * [x] Język podstawowy: polski.
 * [x] Brak logowania użytkowników w MVP.
 * [x] Pierwsza działająca wersja obsługuje jeden plik.
-* [ ] Gotowe MVP obsługuje jeden plik albo kilka plików w jednym przesłaniu.
+* [x] Gotowe MVP obsługuje jeden plik albo kilka plików w jednym przesłaniu (maks. 8).
 * [x] Zachować układ, style, tabele, obrazy, wykresy, formuły i pozostałe elementy dokumentu.
 * [x] Nie przebudowywać dokumentu na podstawie samego wyekstrahowanego tekstu.
 * [x] Celem jest możliwie identyczny wygląd, ale bez obietnicy identycznych podziałów linii i stron, gdy znacznik ma inną długość niż tekst źródłowy.
@@ -123,10 +123,10 @@ py -3.13.14 -m venv .venv
 
 ### 5.2. Wiele plików — zakres MVP
 
-* [ ] Użytkownik może wybrać kilka plików jednocześnie; każdy plik przechodzi ten sam proces co pojedynczy plik.
+* [x] Użytkownik może wybrać kilka plików jednocześnie; każdy plik przechodzi ten sam proces co pojedynczy plik.
 * [ ] Pliki analizować niezależnie, ale używać jednego rejestru znaczników dla całej partii: ta sama wartość w różnych plikach otrzymuje ten sam znacznik.
-* [ ] Findings grupować według pliku i umożliwić zatwierdzanie lub odznaczanie wyników osobno dla każdego pliku.
-* [ ] Błąd jednego pliku nie może blokować przetworzenia pozostałych; pokazać status każdego pliku.
+* [x] Findings grupować według pliku i umożliwić zatwierdzanie lub odznaczanie wyników osobno dla każdego pliku.
+* [x] Błąd jednego pliku nie może blokować przetworzenia pozostałych; pokazać status każdego pliku.
 * [ ] Jeden wynik zwracać jako oryginalny format, a wiele wyników jako jeden ZIP utworzony w pamięci.
 * [ ] Ustawić konfigurowalny limit liczby plików i łącznego rozmiaru partii.
 
@@ -169,12 +169,12 @@ py -3.13.14 -m venv .venv
 
 ## 7. Interfejs użytkownika
 
-* [ ] Ekran uploadu pozwala wybrać jeden lub kilka plików i pokazuje limit liczby oraz łącznego rozmiaru.
+* [x] Ekran uploadu pozwala wybrać jeden lub kilka plików i pokazuje limit liczby.
 * [x] Nie pokazywać wyboru trybu anonimizacji — zawsze stosować znaczniki.
 * [x] Po analizie wyświetlić Findings pogrupowane według pliku.
 * [x] Nie wyświetlać pełnej wartości poufnej; używać skróconego podglądu.
 * [x] Zwracać plik z sufiksem `_anonimizowany` lub neutralną nazwą, gdy nazwa wejściowa zawiera dane osobowe.
-* [ ] Dla wielu plików pokazać status analizy i anonimizacji każdego pliku.
+* [x] Dla wielu plików pokazać status analizy i anonimizacji każdego pliku.
 * [x] Ustawić `Cache-Control: no-store` i `Pragma: no-cache`.
 
 ## 8. Adapter DOCX

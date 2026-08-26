@@ -59,7 +59,7 @@ REQUIRED_SOURCE_FILES = [
 # Konfiguracja uploadu oraz limitów bezpieczeństwa ZIP/XML
 # ---------------------------------------------------------------------------
 MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50 MB
-MAX_FILES_PER_BATCH = 10
+MAX_FILES_PER_BATCH = 8
 
 # Limity ZIP bomb / bezpieczeństwa
 ZIP_MAX_ENTRIES = 500

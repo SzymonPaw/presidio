@@ -21,6 +21,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     var fileInput = document.getElementById('file-input');
     var fileLabel = document.querySelector('.file-label');
     var fileInfo = document.getElementById('file-info');
+    var documentList = document.getElementById('document-list');
     var analyzeBtn = document.getElementById('analyze-btn');
     var statusDiv = document.getElementById('status');
     var findingsDiv = document.getElementById('findings');
@@ -110,6 +111,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
     var currentFindings = [];
 
+    var documents = [];
+    var currentDocumentIndex = -1;
+
 
     var modalIsOpen = false;
 
@@ -145,7 +149,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             fileLabel.classList.remove('dragover');
             var files = e.dataTransfer.files;
             if (files.length > 0) {
-                handleFile(files[0]);
+                handleFiles(files);
             }
         });
     }
@@ -154,30 +158,128 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     if (fileInput) {
         fileInput.addEventListener('change', function () {
             if (fileInput.files.length > 0) {
-                handleFile(fileInput.files[0]);
+                handleFiles(fileInput.files);
             }
         });
     }
 
-    function handleFile(file) {
+    function handleFiles(fileList) {
+        var files = Array.prototype.slice.call(fileList);
+        var availableSlots = 8 - documents.length;
+
+        if (availableSlots <= 0) {
+            statusDiv.textContent = 'Można dodać maksymalnie 8 plików.';
+            fileInput.value = '';
+            return;
+        }
+
+        if (files.length > availableSlots) {
+            statusDiv.textContent =
+                'Można dodać jeszcze tylko ' + availableSlots + ' plik'
+                + (availableSlots === 1 ? '.' : 'i.');
+            files = files.slice(0, availableSlots);
+        } else {
+            statusDiv.textContent = '';
+        }
+
+        files.forEach(function (file) {
+            documents.push({
+                file: file,
+                findings: [],
+                analyzed: false,
+                status: 'Oczekuje na analizę'
+            });
+        });
+
+        if (currentDocumentIndex < 0) {
+            currentDocumentIndex = 0;
+        }
+
+        switchDocument(currentDocumentIndex);
+        renderDocumentList();
+        analyzeBtn.disabled = documents.length === 0;
+        fileInput.value = '';
+    }
+
+    function switchDocument(index) {
+        persistCurrentFindingsState();
+
+        if (!documents[index]) {
+            selectedFile = null;
+            currentFindings = [];
+            return;
+        }
+
+        currentDocumentIndex = index;
+        selectedFile = documents[index].file;
+        currentFindings = documents[index].findings;
         resetPdfPreview();
 
-        currentFindings = [];
-
-        selectedFile = file;
-
-        findingsDiv.innerHTML = '';
-
-        statusDiv.textContent = '';
+        findingsDiv.innerHTML = documents[index].analyzed ? '' :
+            '<p>Dokument oczekuje na analizę.</p>';
 
         fileInfo.textContent =
             'Wybrany plik: '
-            + file.name
+            + selectedFile.name
             + ' ('
-            + formatSize(file.size)
+            + formatSize(selectedFile.size)
             + ')';
 
-        analyzeBtn.disabled = false;
+        if (documents[index].analyzed) {
+            renderFindings(currentFindings);
+        }
+
+        renderDocumentList();
+    }
+
+    function persistCurrentFindingsState() {
+        if (currentDocumentIndex < 0 || !documents[currentDocumentIndex].analyzed) {
+            return;
+        }
+
+        var checkboxes = findingsDiv.querySelectorAll('input[name="anonymize"]');
+        checkboxes.forEach(function (checkbox) {
+            var finding = documents[currentDocumentIndex].findings.find(function (item) {
+                return String(item.id) === String(checkbox.value);
+            });
+            if (finding) finding.enabled = checkbox.checked;
+        });
+    }
+
+    function renderDocumentList() {
+        if (!documentList) return;
+
+        documentList.innerHTML = documents.map(function (item, index) {
+            var activeClass = index === currentDocumentIndex ? ' is-active' : '';
+            var downloadDisabled = item.analyzed ? '' : ' disabled';
+            return '<div class="document-item' + activeClass + '">'
+                + '<button type="button" class="document-select" data-document-index="' + index + '">'
+                + escapeHtml(item.file.name)
+                + ' <span>(' + escapeHtml(getFileType(item.file.name)) + ')</span>'
+                + '<small>' + escapeHtml(item.status) + '</small>'
+                + '</button>'
+                + '<button type="button" class="btn btn-secondary btn-sm document-download" data-document-index="' + index + '"' + downloadDisabled + '>Pobierz</button>'
+                + '</div>';
+        }).join('');
+
+        documentList.querySelectorAll('.document-select').forEach(function (button) {
+            button.addEventListener('click', function () {
+                switchDocument(Number(button.getAttribute('data-document-index')));
+            });
+        });
+
+        documentList.querySelectorAll('.document-download').forEach(function (button) {
+            button.addEventListener('click', function () {
+                switchDocument(Number(button.getAttribute('data-document-index')));
+                var confirmButton = document.getElementById('confirm-btn');
+                if (confirmButton) confirmButton.click();
+            });
+        });
+    }
+
+    function getFileType(filename) {
+        var extension = filename.split('.').pop().toUpperCase();
+        return extension === filename.toUpperCase() ? 'plik' : extension;
     }
 
     function formatSize(bytes) {
@@ -189,30 +291,35 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     if (form) {
         form.addEventListener('submit', function (e) {
             e.preventDefault();
-            if (!selectedFile) return;
+            if (!documents.length) return;
 
-            statusDiv.textContent = 'Analizowanie...';
-            findingsDiv.innerHTML = '';
+            statusDiv.textContent = 'Analizowanie dokumentów...';
+            analyzeBtn.disabled = true;
 
-            var formData = new FormData();
-            formData.append('file', selectedFile);
-
-            fetch('/analyze', {
-                method: 'POST',
-                body: formData
-            })
-            .then(function (resp) { return resp.json(); })
-            .then(function (data) {
-                statusDiv.textContent = '';
-                if (data.error) {
-                    statusDiv.textContent = 'Błąd: ' + data.error;
-                    return;
-                }
-                renderFindings(data.findings);
-            })
-            .catch(function (err) {
-                statusDiv.textContent = 'Błąd komunikacji z serwerem.';
-                console.error(err);
+            documents.reduce(function (promise, document, index) {
+                return promise.then(function () {
+                    document.status = 'Analizowanie...';
+                    renderDocumentList();
+                    var formData = new FormData();
+                    formData.append('file', document.file);
+                    return fetch('/analyze', { method: 'POST', body: formData })
+                        .then(function (resp) { return resp.json(); })
+                        .then(function (data) {
+                            if (data.error) throw new Error(data.error);
+                            document.findings = data.findings || [];
+                            document.analyzed = true;
+                            document.status = 'Gotowy';
+                        })
+                        .catch(function (error) {
+                            document.status = 'Błąd analizy';
+                            console.error(error);
+                        });
+                });
+            }, Promise.resolve()).then(function () {
+                statusDiv.textContent = 'Analiza zakończona.';
+                analyzeBtn.disabled = false;
+                switchDocument(currentDocumentIndex);
+                renderDocumentList();
             });
         });
     }
@@ -221,10 +328,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         currentFindings =
             findings || [];
 
-        if (currentFindings.length === 0) {
-            findingsDiv.innerHTML = '<p>Brak wykrytych danych.</p>';
-            return;
-        }
+        var noFindingsMessage = currentFindings.length === 0 ?
+            '<p>Brak wykrytych danych.</p>' : '';
 
         var isPdf = selectedFile && selectedFile.name.toLowerCase().endsWith ?
             selectedFile.name.toLowerCase().endsWith('.pdf') :
@@ -238,7 +343,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             selectedFile.name.toLowerCase().endsWith('.xlsx') :
             /\.xlsx$/i.test(selectedFile.name);
 
-        var html = '<h2>Wykryte dane</h2>';
+        var html = noFindingsMessage + '<h2>Wykryte dane</h2>';
         html += '<table class="findings-table"><thead><tr><th>Typ</th><th>Znacznik</th><th>Pokrycie</th><th>Wystąpienia</th><th>Anonimizuj</th>';
         // html += '<table class="findings-table"><thead><tr><th>Typ</th><th>Znacznik</th><th>Siła</th><th>Powód</th><th>Liczba</th><th>Anonimizuj</th>';
         if (isPdf || isDocx || isXlsx) {
@@ -253,7 +358,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             html += '<td>' + (f.score.toFixed(2) * 100) + '%</td>';
             // html += '<td>' + escapeHtml(f.reason) + '</td>';
             html += '<td>' + f.count + '</td>';
-            html += '<td><div class="checkbox-wrapper-6"><input class="tgl tgl-light" id="cb1-6-' + f.id + '" type="checkbox" name="anonymize" value="' + f.id + '" checked><label class="tgl-btn" for="cb1-6-' + f.id + '"></label></div></td>';
+            var checkedAttribute = f.enabled !== false ? ' checked' : '';
+            html += '<td><div class="checkbox-wrapper-6"><input class="tgl tgl-light" id="cb1-6-' + f.id + '" type="checkbox" name="anonymize" value="' + f.id + '"' + checkedAttribute + '><label class="tgl-btn" for="cb1-6-' + f.id + '"></label></div></td>';
             if (isPdf || isDocx || isXlsx) {
                 // Wspólny przycisk podglądu dla PDF, DOCX i XLSX.
                 html +=
@@ -347,6 +453,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 checkbox.addEventListener(
                     'change',
                     function () {
+                        var finding = getFindingById(checkbox.value);
+                        if (finding) finding.enabled = checkbox.checked;
                         renderPdfFindingsSidebar();
                         if (isSelectedFileDocx() || isSelectedFileXlsx()) {
                             refreshDocxPreviewState();
@@ -373,6 +481,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     checkedIds.push(cb.value);
                 });
 
+                if (documents[currentDocumentIndex]) {
+                    documents[currentDocumentIndex].status = 'Anonimizowanie...';
+                    renderDocumentList();
+                }
                 statusDiv.textContent = 'Anonimizowanie...';
 
                 var formData = new FormData();
@@ -550,10 +662,20 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     statusDiv.textContent =
                         'Anonimizacja zakończona. '
                         + 'Plik został pobrany.';
+
+                    if (documents[currentDocumentIndex]) {
+                        documents[currentDocumentIndex].status = 'Pobrany';
+                        renderDocumentList();
+                    }
                 })
                 .catch(function (err) {
                     statusDiv.textContent =
                         'Błąd podczas anonimizacji.';
+
+                    if (documents[currentDocumentIndex]) {
+                        documents[currentDocumentIndex].status = 'Błąd anonimizacji';
+                        renderDocumentList();
+                    }
 
                     console.error(err);
                 });
