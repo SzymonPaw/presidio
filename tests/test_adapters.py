@@ -171,4 +171,5 @@ def test_xlsx_preview_renders_sheet_tabs_for_multiple_worksheets():
     assert "Arkusz 1" in html
     assert "Arkusz 2" in html
     assert html.count("xlsx-sheet-panel") >= 2
+    assert 'class="xlsx-hit"' in html
 

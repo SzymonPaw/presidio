@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 import logging
+import posixpath
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from lxml import etree
@@ -409,25 +411,27 @@ class XlsxAdapter:
         except SecurityError:
             rels = {}
 
+        workbook_sheets = list(workbook_tree.iter(f"{SNS}sheet"))
         sheet_labels: Dict[str, str] = {}
-        for sheet in workbook_tree.iter(f"{S_NS}sheet"):
+        ordered_sheet_paths: List[str] = []
+        for sheet_index, sheet in enumerate(workbook_sheets):
             rel_id = sheet.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
             target = rels.get(rel_id)
-            if not target:
-                continue
-            if target.startswith("/"):
-                target = target[1:]
-            if target.startswith("../"):
-                target = target[3:]
-            if not target.startswith("xl/"):
-                target = "xl/" + target.lstrip("/")
+            if target:
+                target = posixpath.normpath(posixpath.join("xl", target.lstrip("/")))
+                if not target.startswith("xl/"):
+                    target = "xl/" + target.lstrip("/")
+            else:
+                target = "xl/worksheets/sheet" + str(sheet_index + 1) + ".xml"
+
             if target in zf.namelist():
-                sheet_labels[target] = sheet.get("name") or f"Arkusz {len(sheet_labels) + 1}"
+                ordered_sheet_paths.append(target)
+                sheet_labels[target] = sheet.get("name") or target.rsplit("/", 1)[-1]
 
         _, shared_values = self._load_shared_strings(zf)
         sheet_paths: List[str] = []
         seen_sheet_paths = set()
-        for target in sorted(sheet_labels.keys()):
+        for target in ordered_sheet_paths:
             if target not in seen_sheet_paths:
                 sheet_paths.append(target)
                 seen_sheet_paths.add(target)
@@ -441,6 +445,13 @@ class XlsxAdapter:
                 if candidate not in seen_sheet_paths:
                     sheet_paths.append(candidate)
                     seen_sheet_paths.add(candidate)
+
+        for index, part_name in enumerate(sheet_paths):
+            if part_name not in sheet_labels:
+                if index < len(workbook_sheets):
+                    sheet_labels[part_name] = workbook_sheets[index].get("name") or part_name.rsplit("/", 1)[-1]
+                else:
+                    sheet_labels[part_name] = part_name.rsplit("/", 1)[-1]
 
         if not sheet_paths:
             return '<div class="docx-preview-empty">Dokument Excel nie zawiera widocznych danych do podglądu.</div>'
@@ -499,43 +510,68 @@ class XlsxAdapter:
             finding_map.setdefault(key, []).append(finding)
 
         sheet_panels: List[str] = []
+        preview_styles = self._load_preview_styles(zf)
         for index, part_name in enumerate(sheet_paths):
             try:
                 tree = read_xml_part(zf, part_name)
             except SecurityError:
                 continue
 
-            rows: Dict[int, Dict[int, str]] = {}
+            columns, row_geometry, merges = self._load_sheet_geometry(tree)
+            rows: Dict[int, Dict[int, Tuple[str, int]]] = {}
             for cell in tree.iter(f"{SNS}c"):
                 cell_ref = cell.get("r")
                 if not cell_ref:
                     continue
                 text, _storage, _shared_index = self._cell_text(cell, shared_values)
-                if not text:
-                    continue
                 row_index, col_index = self._cell_coord(cell_ref)
-                rows.setdefault(row_index, {})[col_index] = text
+                try:
+                    style_index = int(cell.get("s", "0"))
+                except ValueError:
+                    style_index = 0
+                rows.setdefault(row_index, {})[col_index] = (text, style_index)
 
             if not rows:
                 continue
 
             max_row = max(rows)
             max_col = max(max(row.items(), key=lambda item: item[0])[0] for row in rows.values()) if rows else 0
+            merge_map: Dict[Tuple[int, int], Tuple[int, int]] = {}
+            for start_row, start_col, end_row, end_col in merges:
+                merge_map[(start_row, start_col)] = (end_row, end_col)
+
             table_rows: List[str] = []
             for row_index in range(1, max_row + 1):
                 cells: List[str] = []
                 for col_index in range(1, max_col + 1):
-                    text = rows.get(row_index, {}).get(col_index, "")
-                    if not text:
-                        cell_html = "<td class=\"xlsx-preview-cell\">&nbsp;</td>"
-                    else:
-                        cell_ref = self._cell_reference(col_index, row_index)
-                        cell_key = f"{part_name}!{cell_ref}"
-                        cell_findings = finding_map.get(cell_key, finding_map.get(cell_ref, []))
-                        rendered = self._render_cell_value(text, cell_findings, mode)
-                        cell_html = f'<td class="xlsx-preview-cell">{rendered}</td>'
+                    merge = merge_map.get((row_index, col_index))
+                    if merge is None:
+                        if any(start_row <= row_index <= end_row and start_col <= col_index <= end_col
+                               for start_row, start_col, end_row, end_col in merges):
+                            continue
+
+                    text, style_index = rows.get(row_index, {}).get(col_index, ("", 0))
+                    cell_ref = self._cell_reference(col_index, row_index)
+                    cell_key = f"{part_name}!{cell_ref}"
+                    cell_findings = finding_map.get(cell_key, finding_map.get(cell_ref, []))
+                    rendered = self._render_cell_value(text, cell_findings, mode) if text else "&nbsp;"
+                    geometry = dict(columns.get(col_index, {}))
+                    geometry.update(row_geometry.get(row_index, {}))
+                    style = preview_styles[style_index] if style_index < len(preview_styles) else ""
+                    style_attr = self._preview_cell_style(style, geometry)
+                    style_html = f' style="{self._escape_attr(style_attr)}"' if style_attr else ""
+                    span_html = ""
+                    if merge is not None:
+                        end_row, end_col = merge
+                        if end_col > col_index:
+                            span_html += f' colspan="{end_col - col_index + 1}"'
+                        if end_row > row_index:
+                            span_html += f' rowspan="{end_row - row_index + 1}"'
+                    cell_html = f'<td class="xlsx-preview-cell"{style_html}{span_html}>{rendered}</td>'
                     cells.append(cell_html)
-                table_rows.append(f'<tr>{"".join(cells)}</tr>')
+                row_style = row_geometry.get(row_index, {})
+                row_hidden = ' style="display:none"' if row_style.get("hidden") else ""
+                table_rows.append(f'<tr{row_hidden}>{"".join(cells)}</tr>')
 
             if table_rows:
                 sheet_label = sheet_labels.get(part_name, f"Arkusz {index + 1}")
@@ -543,7 +579,13 @@ class XlsxAdapter:
                 sheet_panels.append(
                     '<section class="xlsx-sheet-panel' + is_active + '" data-sheet-name="' + self._escape_attr(sheet_label) + '">'
                     + '<div class="xlsx-sheet-header">' + self._escape_text(sheet_label) + '</div>'
-                    + '<table class="xlsx-preview-table">' + ''.join(table_rows) + '</table>'
+                    + '<table class="xlsx-preview-table"><colgroup>'
+                    + ''.join(
+                        f'<col style="width:{float(columns[col].get("width")) * 7}px">'
+                        if columns.get(col, {}).get("width") else '<col>'
+                        for col in range(1, max_col + 1)
+                    )
+                    + '</colgroup>' + ''.join(table_rows) + '</table>'
                     + '</section>'
                 )
 
@@ -564,6 +606,145 @@ class XlsxAdapter:
             + '<div class="xlsx-sheet-panels">' + ''.join(sheet_panels) + '</div>'
             + '</div>'
         )
+
+    @staticmethod
+    def _xml_attr(element, name: str, default: str = "") -> str:
+        value = element.get(name)
+        return value if value is not None else default
+
+    def _load_preview_styles(self, zf) -> List[str]:
+        """Zwraca style CSS dla indeksow s komorek, bez zmiany pakietu XLSX."""
+        try:
+            styles = read_xml_part(zf, "xl/styles.xml")
+        except (SecurityError, KeyError):
+            return []
+
+        fonts = list(styles.iter(f"{SNS}font"))
+        fills = list(styles.iter(f"{SNS}fill"))
+        borders = list(styles.iter(f"{SNS}border"))
+        cell_xfs = styles.find(f"{SNS}cellXfs")
+        if cell_xfs is None:
+            return []
+
+        def color(node) -> str:
+            if node is None:
+                return ""
+            value = node.get("rgb") or node.get("indexed") or node.get("theme")
+            if not value:
+                return ""
+            if len(value) == 8 and value[:2] in {"00", "FF"}:
+                value = value[2:]
+            return f"#{value}" if re.fullmatch(r"[0-9A-Fa-f]{6}", value) else ""
+
+        result: List[str] = []
+        for xf in cell_xfs:
+            css: List[str] = []
+            font_id = int(xf.get("fontId", "0"))
+            fill_id = int(xf.get("fillId", "0"))
+            border_id = int(xf.get("borderId", "0"))
+
+            if font_id < len(fonts):
+                font = fonts[font_id]
+                if font.find(f"{SNS}b") is not None:
+                    css.append("font-weight:700")
+                if font.find(f"{SNS}i") is not None:
+                    css.append("font-style:italic")
+                size = font.find(f"{SNS}sz")
+                if size is not None and size.get("val"):
+                    css.append(f"font-size:{size.get('val')}pt")
+                font_color = color(font.find(f"{SNS}color"))
+                if font_color:
+                    css.append(f"color:{font_color}")
+
+            if fill_id < len(fills):
+                pattern = fills[fill_id].find(f"{SNS}patternFill")
+                if pattern is not None and pattern.get("patternType") not in (None, "none"):
+                    fill_color = color(pattern.find(f"{SNS}fgColor"))
+                    if fill_color:
+                        css.append(f"background-color:{fill_color}")
+
+            if border_id < len(borders):
+                border = borders[border_id]
+                for side_name in ("left", "right", "top", "bottom"):
+                    side = border.find(f"{SNS}{side_name}")
+                    if side is not None and side.get("style"):
+                        side_color = color(side.find(f"{SNS}color")) or "#808080"
+                        css.append(f"border-{side_name}:1px solid {side_color}")
+
+            alignment = xf.find(f"{SNS}alignment")
+            if alignment is not None:
+                horizontal = alignment.get("horizontal")
+                vertical = alignment.get("vertical")
+                wrap = alignment.get("wrapText")
+                if horizontal:
+                    css.append(f"text-align:{horizontal}")
+                if vertical:
+                    css.append(f"vertical-align:{vertical}")
+                if wrap == "1" or wrap == "true":
+                    css.append("white-space:pre-wrap")
+
+            result.append(";".join(css))
+        return result
+
+    def _load_sheet_geometry(self, tree) -> Tuple[Dict[int, Dict[str, Any]], Dict[int, Dict[str, Any]], List[Tuple[int, int, int, int]]]:
+        """Odczytuje wymiary kolumn/wierszy i zakresy mergeCells arkusza."""
+        columns: Dict[int, Dict[str, Any]] = {}
+        cols = tree.find(f"{SNS}cols")
+        if cols is not None:
+            for column in cols.findall(f"{SNS}col"):
+                try:
+                    start = int(column.get("min", "1"))
+                    end = int(column.get("max", str(start)))
+                except ValueError:
+                    continue
+                for index in range(start, end + 1):
+                    columns[index] = {
+                        "width": column.get("width"),
+                        "hidden": column.get("hidden") in {"1", "true"},
+                    }
+
+        rows: Dict[int, Dict[str, Any]] = {}
+        sheet_data = tree.find(f"{SNS}sheetData")
+        if sheet_data is not None:
+            for row in sheet_data.findall(f"{SNS}row"):
+                try:
+                    index = int(row.get("r", "0"))
+                except ValueError:
+                    continue
+                rows[index] = {
+                    "height": row.get("ht"),
+                    "hidden": row.get("hidden") in {"1", "true"},
+                }
+
+        merges: List[Tuple[int, int, int, int]] = []
+        merge_cells = tree.find(f"{SNS}mergeCells")
+        if merge_cells is not None:
+            for merge in merge_cells.findall(f"{SNS}mergeCell"):
+                ref = merge.get("ref", "")
+                if ":" not in ref:
+                    continue
+                start, end = ref.split(":", 1)
+                try:
+                    start_row, start_col = self._cell_coord(start)
+                    end_row, end_col = self._cell_coord(end)
+                except (TypeError, ValueError):
+                    continue
+                merges.append((start_row, start_col, end_row, end_col))
+        return columns, rows, merges
+
+    @staticmethod
+    def _preview_cell_style(style: str, geometry: Dict[str, Any]) -> str:
+        declarations = [item for item in (style or "").split(";") if item]
+        if geometry.get("width"):
+            try:
+                declarations.append(f"width:{float(geometry['width']) * 7}px")
+            except ValueError:
+                pass
+        if geometry.get("height"):
+            declarations.append(f"height:{geometry['height']}pt")
+        if geometry.get("hidden"):
+            declarations.append("display:none")
+        return ";".join(declarations)
 
     @staticmethod
     def _cell_coord(cell_ref: str) -> Tuple[int, int]:

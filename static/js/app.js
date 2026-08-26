@@ -2955,6 +2955,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             );
             var hit = docxHits[activeIndex];
             if (hit) {
+                activateXlsxSheetForHit(hit);
                 hit.classList.add('is-selected');
 
                 if (pdfViewerContainer && typeof hit.getBoundingClientRect === 'function') {
@@ -2974,6 +2975,30 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 }
             }
         }
+    }
+
+    function activateXlsxSheetForHit(hit) {
+        if (!hit || !hit.classList.contains('xlsx-hit')) {
+            return;
+        }
+
+        var panel = hit.closest('.xlsx-sheet-panel');
+        if (!panel) {
+            return;
+        }
+
+        var sheetName = panel.getAttribute('data-sheet-name');
+        if (!sheetName) {
+            return;
+        }
+
+        pdfViewerElement.querySelectorAll('.xlsx-sheet-tab').forEach(function (tab) {
+            tab.classList.toggle('is-active', tab.getAttribute('data-sheet-name') === sheetName);
+        });
+
+        pdfViewerElement.querySelectorAll('.xlsx-sheet-panel').forEach(function (item) {
+            item.classList.toggle('is-active', item === panel);
+        });
     }
 
     function focusPdfFinding(

@@ -105,13 +105,21 @@ class AnonymizationService:
 
         all_findings: List[Dict[str, Any]] = []
         for rf in raw_findings:
-            all_findings.append(
-                self._make_finding(
-                    rf["entity_type"],
-                    rf["raw_value"],
-                    rf["score"],
-                    page=rf.get("location", "XLSX"),
-                    bbox=None,
-                )
+            finding = self._make_finding(
+                rf["entity_type"],
+                rf["raw_value"],
+                rf["score"],
+                page=rf.get("location", "XLSX"),
+                bbox=None,
+                location=rf.get("location"),
             )
+            for field in (
+                "xlsx_part",
+                "xlsx_cell",
+                "xlsx_storage",
+                "xlsx_shared_index",
+            ):
+                if rf.get(field) is not None:
+                    finding[field] = rf[field]
+            all_findings.append(finding)
         return all_findings
