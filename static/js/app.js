@@ -258,6 +258,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 + ' <span>(' + escapeHtml(getFileType(item.file.name)) + ')</span>'
                 + '<small>' + escapeHtml(item.status) + '</small>'
                 + '</button>'
+                + '<button type="button" class="btn btn-danger btn-sm document-remove" data-document-index="' + index + '">Usuń</button>'
                 + '<button type="button" class="btn btn-secondary btn-sm document-download" data-document-index="' + index + '"' + downloadDisabled + '>Pobierz</button>'
                 + '</div>';
         }).join('');
@@ -268,6 +269,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             });
         });
 
+        documentList.querySelectorAll('.document-remove').forEach(function (button) {
+            button.addEventListener('click', function () {
+                removeDocument(Number(button.getAttribute('data-document-index')));
+            });
+        });
+
         documentList.querySelectorAll('.document-download').forEach(function (button) {
             button.addEventListener('click', function () {
                 switchDocument(Number(button.getAttribute('data-document-index')));
@@ -275,6 +282,37 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 if (confirmButton) confirmButton.click();
             });
         });
+    }
+
+    function removeDocument(index) {
+        if (!documents[index]) {
+            return;
+        }
+
+        persistCurrentFindingsState();
+
+        if (index === currentDocumentIndex && modalIsOpen) {
+            closePdfPreview();
+        }
+
+        documents.splice(index, 1);
+
+        if (!documents.length) {
+            currentDocumentIndex = -1;
+            selectedFile = null;
+            currentFindings = [];
+            fileInfo.textContent = '';
+            findingsDiv.innerHTML = '';
+            statusDiv.textContent = '';
+        } else if (index < currentDocumentIndex) {
+            currentDocumentIndex -= 1;
+        } else if (index === currentDocumentIndex) {
+            currentDocumentIndex = Math.min(index, documents.length - 1);
+            switchDocument(currentDocumentIndex);
+        }
+
+        analyzeBtn.disabled = documents.length === 0;
+        renderDocumentList();
     }
 
     function getFileType(filename) {
@@ -1507,30 +1545,49 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         );
 
         var isXlsx = isSelectedFileXlsx();
-        var route = isXlsx ? '/preview-xlsx' : '/preview-docx';
         var title = isXlsx ? 'Ładowanie podglądu XLSX...' : 'Ładowanie podglądu DOCX...';
 
         statusDiv.textContent = title;
 
         try {
-            var formData = new FormData();
-            formData.append('file', selectedFile);
-            formData.append('preview_mode', pdfPreviewState.previewMode || 'detections');
-
-            var response = await fetch(route, {
-                method: 'POST',
-                body: formData
-            });
-            var payload = await response.json();
-
-            if (!response.ok || payload.error) {
-                throw new Error(payload.error || (isXlsx ? 'Błąd podglądu XLSX.' : 'Błąd podglądu DOCX.'));
-            }
-
             if (pdfViewerElement) {
-                pdfViewerElement.innerHTML = payload.html || '<div class="docx-preview-empty">Brak treści do podglądu.</div>';
-                pdfViewerElement.classList.add('docx-preview-container');
-                bindXlsxSheetTabs();
+                if (isXlsx) {
+                    var xlsxFormData = new FormData();
+                    xlsxFormData.append('file', selectedFile);
+                    xlsxFormData.append('preview_mode', pdfPreviewState.previewMode || 'detections');
+                    var xlsxResponse = await fetch('/preview-xlsx', { method: 'POST', body: xlsxFormData });
+                    var xlsxPayload = await xlsxResponse.json();
+                    if (!xlsxResponse.ok || xlsxPayload.error) {
+                        throw new Error(xlsxPayload.error || 'Błąd podglądu XLSX.');
+                    }
+                    pdfViewerElement.innerHTML = xlsxPayload.html || '<div class="docx-preview-empty">Brak treści do podglądu.</div>';
+                    pdfViewerElement.classList.add('docx-preview-container');
+                    bindXlsxSheetTabs();
+                } else {
+                    var previewBytes = selectedFile;
+                    if ((pdfPreviewState.previewMode || 'detections') === 'output') {
+                        previewBytes = await getAnonymizedPreviewBlob();
+                    }
+                    pdfViewerElement.innerHTML = '';
+                    pdfViewerElement.classList.add('docx-preview-container');
+                    await window.docx.renderAsync(
+                        previewBytes,
+                        pdfViewerElement,
+                        null,
+                        {
+                            className: 'docxjs',
+                            inWrapper: true,
+                            breakPages: true,
+                            ignoreWidth: false,
+                            ignoreHeight: false,
+                            renderHeaders: true,
+                            renderFooters: true,
+                            renderFootnotes: true,
+                            renderEndnotes: true
+                        }
+                    );
+                    decorateDocxFindings((pdfPreviewState.previewMode || 'detections') === 'output');
+                }
             }
 
             if (pdfCurrentPage) {
@@ -1552,6 +1609,61 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             statusDiv.textContent = isXlsx ? 'Błąd podglądu XLSX.' : 'Błąd podglądu DOCX.';
             console.error(error);
         }
+    }
+
+    async function getAnonymizedPreviewBlob() {
+        var checkedIds = [];
+        findingsDiv.querySelectorAll('input[type="checkbox"]:checked').forEach(function (checkbox) {
+            checkedIds.push(checkbox.value);
+        });
+
+        var formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('confirmed_ids', JSON.stringify(checkedIds));
+
+        var response = await fetch('/anonymize', { method: 'POST', body: formData });
+        if (!response.ok) {
+            throw new Error('Nie udało się przygotować podglądu po anonimizacji.');
+        }
+        return await response.blob();
+    }
+
+    function decorateDocxFindings(outputMode) {
+        if (!pdfViewerElement) return;
+
+        currentFindings.forEach(function (finding) {
+            var text = outputMode ? finding.marker : finding.raw_value;
+            if (!text) return;
+            wrapDocxTextMatches(pdfViewerElement, String(text), finding.id);
+        });
+    }
+
+    function wrapDocxTextMatches(root, text, findingId) {
+        var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        var nodes = [];
+        var node;
+        while ((node = walker.nextNode())) {
+            if (node.parentElement && !node.parentElement.closest('.docx-hit, style, script')) {
+                nodes.push(node);
+            }
+        }
+
+        nodes.forEach(function (textNode) {
+            var value = textNode.nodeValue;
+            var offset = value.indexOf(text);
+            while (offset >= 0) {
+                var matched = textNode.splitText(offset);
+                var remainder = matched.splitText(text.length);
+                var hit = document.createElement('span');
+                hit.className = 'docx-hit';
+                hit.dataset.docxFindingId = findingId;
+                hit.textContent = matched.nodeValue;
+                matched.parentNode.replaceChild(hit, matched);
+                textNode = remainder;
+                value = textNode.nodeValue;
+                offset = value.indexOf(text);
+            }
+        });
     }
 
     async function openPdfPreview(
@@ -2302,7 +2414,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                         );
 
                         if (isSelectedFileDocx() || isSelectedFileXlsx()) {
-                            refreshDocxPreviewState();
+                            if (
+                                isSelectedFileDocx()
+                                && modalIsOpen
+                                && (pdfPreviewState.previewMode || 'detections') === 'output'
+                            ) {
+                                openDocxPreview(pdfPreviewState.selectedFindingId);
+                            } else {
+                                refreshDocxPreviewState();
+                            }
                         }
                     }
                 );

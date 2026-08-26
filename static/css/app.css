@@ -178,6 +178,15 @@ h1 {
     background: #008483;
 }
 
+.btn-danger {
+    background: var(--color-pink);
+    color: #ffffff;
+}
+
+.btn-danger:hover {
+    background: #d94352;
+}
+
 .btn:disabled {
     opacity: 0.55;
     cursor: not-allowed;
@@ -452,6 +461,15 @@ h1 {
     overflow: auto;
     background: #f8f9fb;
     color: #1f2937;
+}
+
+.docxjs-wrapper {
+    min-width: 100%;
+}
+
+.docxjs-wrapper > section.docxjs {
+    margin-left: auto;
+    margin-right: auto;
 }
 
 .docx-preview-document {
