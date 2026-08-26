@@ -1358,6 +1358,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             }
         );
 
+        eventBus.on(
+            'textlayerrendered',
+            function (event) {
+                renderPdfOverlayForPage(event.pageNumber - 1);
+            }
+        );
+
 
         eventBus.on(
             'pagechanging',
@@ -1934,46 +1941,49 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                         var pdfBox =
                             occurrence.pdf_bbox;
 
+                        var textLayerRect = findPdfTextSpanRect(
+                            pageView,
+                            finding.raw_value,
+                            pdfBox,
+                            occurrences.slice(0, occurrenceIndex).filter(function (item) {
+                                return Number(item.page) === pageIndex;
+                            }).length
+                        );
 
-                        var point1 =
-                            pageView.viewport
+                        var left;
+                        var top;
+                        var width;
+                        var height;
+
+                        if (textLayerRect) {
+                            var localRect = pdfScreenRectToPageRect(
+                                pageView.div,
+                                textLayerRect
+                            );
+                            left = localRect.left;
+                            top = localRect.top;
+                            width = localRect.width;
+                            height = localRect.height;
+                        } else {
+                            var point1 =
+                                pageView.viewport
                                 .convertToViewportPoint(
                                     pdfBox[0],
                                     pdfBox[1]
                                 );
 
-
-                        var point2 =
-                            pageView.viewport
+                            var point2 =
+                                pageView.viewport
                                 .convertToViewportPoint(
                                     pdfBox[2],
                                     pdfBox[3]
                                 );
 
-
-                        var left =
-                            Math.min(
-                                point1[0],
-                                point2[0]
-                            );
-
-                        var top =
-                            Math.min(
-                                point1[1],
-                                point2[1]
-                            );
-
-                        var width =
-                            Math.abs(
-                                point2[0]
-                                - point1[0]
-                            );
-
-                        var height =
-                            Math.abs(
-                                point2[1]
-                                - point1[1]
-                            );
+                            left = Math.min(point1[0], point2[0]);
+                            top = Math.min(point1[1], point2[1]);
+                            width = Math.abs(point2[0] - point1[0]);
+                            height = Math.abs(point2[1] - point1[1]);
+                        }
 
 
                         var box =
@@ -2026,6 +2036,74 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 
         refreshPdfOverlayState();
+    }
+
+    function findPdfTextSpanRect(pageView, rawValue, pdfBox, occurrenceIndex) {
+        if (!pageView || !pageView.div || !rawValue) {
+            return null;
+        }
+
+        var searchText = String(rawValue);
+        var spans = pageView.div.querySelectorAll('.textLayer span');
+        var matches = Array.from(spans).filter(function (span) {
+            return (span.textContent || '').indexOf(searchText) >= 0;
+        });
+
+        var span = matches[occurrenceIndex];
+        if (matches.length > 1 && Array.isArray(pdfBox) && pdfBox.length === 4) {
+            var point1 = pageView.viewport.convertToViewportPoint(pdfBox[0], pdfBox[1]);
+            var point2 = pageView.viewport.convertToViewportPoint(pdfBox[2], pdfBox[3]);
+            var expectedX = (Math.min(point1[0], point2[0]) + Math.max(point1[0], point2[0])) / 2;
+            var expectedY = (Math.min(point1[1], point2[1]) + Math.max(point1[1], point2[1])) / 2;
+
+            span = matches.reduce(function (closest, candidate) {
+                var candidateRect = candidate.getBoundingClientRect();
+                var pageRect = pageView.div.getBoundingClientRect();
+                var candidateX = candidateRect.left - pageRect.left - pageView.div.clientLeft + candidateRect.width / 2;
+                var candidateY = candidateRect.top - pageRect.top - pageView.div.clientTop + candidateRect.height / 2;
+                var currentDistance = Math.hypot(candidateX - expectedX, candidateY - expectedY);
+                if (!closest || currentDistance < closest.distance) {
+                    return { element: candidate, distance: currentDistance };
+                }
+                return closest;
+            }, null).element;
+        }
+
+        if (!span) {
+            return null;
+        }
+
+        var spanText = span.textContent || '';
+        var start = spanText.indexOf(searchText);
+        if (start < 0 || !span.firstChild || span.firstChild.nodeType !== Node.TEXT_NODE) {
+            return null;
+        }
+
+        var range = document.createRange();
+        range.setStart(span.firstChild, start);
+        range.setEnd(span.firstChild, start + searchText.length);
+
+        var rects = Array.from(range.getClientRects());
+        if (!rects.length) {
+            return null;
+        }
+
+        // Keep a single local rectangle. Wrapped findings use the backend
+        // geometry fallback instead of creating an oversized union.
+        return rects.length === 1 ? rects[0] : null;
+    }
+
+    function pdfScreenRectToPageRect(pageElement, screenRect) {
+        var pageRect = pageElement.getBoundingClientRect();
+        var scaleX = pageRect.width / pageElement.clientWidth || 1;
+        var scaleY = pageRect.height / pageElement.clientHeight || 1;
+
+        return {
+            left: (screenRect.left - pageRect.left - pageElement.clientLeft) / scaleX,
+            top: (screenRect.top - pageRect.top - pageElement.clientTop) / scaleY,
+            width: screenRect.width / scaleX,
+            height: screenRect.height / scaleY
+        };
     }
 
 
@@ -3301,7 +3379,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                         pdfBox[1]
                     );
 
-
             var point2 =
                 pageView.viewport
                     .convertToViewportPoint(
@@ -3309,13 +3386,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                         pdfBox[3]
                     );
 
-
             var boxTop =
                 Math.min(
                     point1[1],
                     point2[1]
                 );
-
 
             var boxHeight =
                 Math.abs(
@@ -3328,7 +3403,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     point1[0],
                     point2[0]
                 );
-
 
             var boxWidth =
                 Math.abs(
