@@ -134,7 +134,10 @@ class NipRecognizer(EntityRecognizer):
     _PATTERN = re.compile(
         r"(?<!\d)"
         r"("
-        r"\d(?:[\s\r\n-]?\d){9}"
+        r"(?:\d{10}|"
+        r"\d{3}[\s\r\n-]?\d{3}[\s\r\n-]?\d{2}[\s\r\n-]?\d{2}|"
+        r"\d{3}[\s\r\n-]?\d{2}[\s\r\n-]?\d{2}[\s\r\n-]?\d{3}"
+        r")"
         r")"
         r"(?!\d)"
     )
@@ -561,6 +564,64 @@ class OrganizationRecognizer(EntityRecognizer):
         "_\\-+&'\"„”().,/"
     )
 
+    _FORBIDDEN_PREFIXES = {
+        "w",
+        "z",
+        "o",
+        "na",
+        "po",
+        "za",
+        "do",
+        "od",
+        "przy",
+        "bez",
+        "lub",
+        "oraz",
+        "i",
+        "czy",
+        "wrazie",
+        "terminie",
+        "niedbalstwa",
+        "naruszenia",
+        "ubezpieczający",
+        "ubezpieczony",
+        "zabezpieczenia",
+        "szczegółowych",
+        "słuszności",
+        "okolicznościach",
+    }
+
+    _FORBIDDEN_WORDS = {
+        "w",
+        "z",
+        "o",
+        "na",
+        "po",
+        "za",
+        "do",
+        "od",
+        "przy",
+        "bez",
+        "lub",
+        "oraz",
+        "i",
+        "czy",
+        "wrazie",
+        "terminie",
+        "dniu",
+        "dnia",
+        "rażącego",
+        "niedbalstwa",
+        "naruszenia",
+        "ubezpieczający",
+        "ubezpieczony",
+        "zabezpieczenia",
+        "obowiązków",
+        "słuszności",
+        "okolicznościach",
+        "względem",
+    }
+
     def __init__(self):
         super().__init__(
             supported_entities=["ORGANIZATION"],
@@ -619,6 +680,37 @@ class OrganizationRecognizer(EntityRecognizer):
             re.IGNORECASE,
         )
 
+    def _looks_like_real_company_name(self, candidate: str) -> bool:
+        candidate = candidate.strip()
+        if not candidate:
+            return False
+
+        if len(candidate) < 4:
+            return False
+
+        tokens = re.split(r"[\s\r\n]+", candidate)
+        tokens = [token.strip(" ,;:-\"“”()") for token in tokens if token.strip()]
+
+        if len(tokens) < 2 or len(tokens) > 12:
+            return False
+
+        normalized = [token.lower() for token in tokens]
+        if normalized[0] in self._FORBIDDEN_PREFIXES:
+            return False
+
+        if any(token in self._FORBIDDEN_WORDS for token in normalized):
+            return False
+
+        if not any(ch.isupper() for ch in candidate):
+            if not any(ch.isdigit() for ch in candidate):
+                return False
+
+        if re.search(r"(?i)\b(?:w|z|o|na|po|za|do|od|przy|bez|lub|czy|i|oraz)\b", candidate):
+            if len(tokens) <= 2:
+                return False
+
+        return True
+
     def analyze(
         self,
         text: str,
@@ -633,6 +725,10 @@ class OrganizationRecognizer(EntityRecognizer):
         for match in self._form_pattern.finditer(
             text
         ):
+            candidate = match.group(1).strip()
+            if not self._looks_like_real_company_name(candidate):
+                continue
+
             results.append(
                 RecognizerResult(
                     "ORGANIZATION",
@@ -663,18 +759,18 @@ class AddressRecognizer(EntityRecognizer):
 
     _PREFIX = (
         r"(?:"
-        r"ul\.?"
-        r"Adres siedziby\.?"
-        r"|al\.?"
-        r"|aleja"
-        r"|aleje"
-        r"|pl\.?"
-        r"|plac"
-        r"|os\.?"
-        r"|osiedle"
-        r"|rondo"
-        r"|skwer"
-        r"|bulwar"
+        r"ul\.?|"
+        r"adres\s+siedziby\.?|"
+        r"al\.?|"
+        r"aleja|"
+        r"aleje|"
+        r"pl\.?|"
+        r"plac|"
+        r"os\.?|"
+        r"osiedle|"
+        r"rondo|"
+        r"skwer|"
+        r"bulwar"
         r")"
     )
 
@@ -825,6 +921,33 @@ class AddressRecognizer(EntityRecognizer):
 
         return None
 
+    def _fallback_locality_prefix(self, candidate: str) -> str | None:
+        candidate = re.sub(r"\s+", " ", candidate).strip(" ,;")
+        if not candidate:
+            return None
+
+        lowered = candidate.lower().strip()
+        if lowered in {"miasto", "miejscowość", "lokalizacja", "adres"}:
+            return None
+
+        chunks = candidate.split()
+        if not chunks:
+            return None
+
+        max_words = min(len(chunks), 3)
+        for count in range(max_words, 0, -1):
+            prefix = " ".join(chunks[:count])
+            if not re.fullmatch(
+                r"[A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż][A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż'’.-]*(?:[ -][A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż][A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż'’.-]*){0,2}",
+                prefix,
+            ):
+                continue
+            if prefix.lower() in {"miejscowość", "miasto", "lokalizacja", "adres"}:
+                continue
+            return prefix
+
+        return None
+
     def _postal_spans(self, text: str) -> list[tuple[int, int]]:
         spans: list[tuple[int, int]] = []
 
@@ -832,6 +955,10 @@ class AddressRecognizer(EntityRecognizer):
             locality = self._longest_locality_prefix(
                 match.group("city")
             )
+            if not locality:
+                locality = self._fallback_locality_prefix(
+                    match.group("city")
+                )
 
             if not locality:
                 continue
