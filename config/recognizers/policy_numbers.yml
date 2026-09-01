@@ -1,4 +1,15 @@
 # Reguły numerów polis
+# Bardziej restrykcyjne reguły: wymagają obecności zarówno litery, jak i cyfry,
+# aby uniknąć dat (np. 20260126), krótkich ułamków (116/1) i akronimów (CAR/EAR).
 rules:
-  - name: "fallback"
-    regex: "(?i)\\b(?:polisa|nr polisy|numer polisy)\\s*[:#-]?\\s*([A-Z0-9][A-Z0-9./_-]{4,30})\\b"
+  - name: "pl_prefix"
+    # Typy: PL2026082880356
+    regex: "(?i)\\b(PL[0-9A-Z]{6,20})\\b"
+
+  - name: "alpha_digit_required"
+    # Wymaga przynajmniej jednej litery i jednej cyfry; unika akronimów i czystych dat
+    regex: "(?i)\\b(?=[A-Z0-9./_-]*[A-Z])(?=[A-Z0-9./_-]*\\d)([A-Z0-9][A-Z0-9./_-]{4,30})\\b"
+
+  - name: "labelled_fallback"
+    # Fallback po etykiecie, ale nadal wymaga litery i cyfry
+    regex: "(?i)\\b(?:polisa|nr polisy|numer polisy)\\s*[:#-]?\\s*((?=[A-Z0-9./_-]*[A-Z])(?=[A-Z0-9./_-]*\\d)[A-Z0-9][A-Z0-9./_-]{3,29})\\b"

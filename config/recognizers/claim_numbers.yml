@@ -1,4 +1,28 @@
 # Reguły numerów szkód
+# Zestaw bardziej precyzyjnych reguł opartych na wzorcach z Numery_szkod.csv.
+# Kolejność ma znaczenie — od najbardziej specyficznych do ogólnych.
 rules:
-  - name: "fallback"
-    regex: "(?i)\\b(?:szkoda|nr szkody|numer szkody|roszczenie)\\s*[:#-]?\\s*([A-Z0-9][A-Z0-9./_-]{4,30})\\b"
+  - name: "pl_prefix"
+    # Typy: PL2026082880356
+    regex: "(?i)\\b(PL[0-9]{6,20})\\b"
+
+  - name: "dot_groups"
+    # Typy: 05.115.415 — wyklucza typowe kwoty z przecinkiem i walutą
+    regex: "\\b\\d{1,2}\\.\\d{3}\\.\\d{3}\\b(?![,\\d])(?!(?:\\s*(?:PLN|EUR|USD|zł|zl)\\b))"
+
+  - name: "alpha_dash_numeric"
+    # Typy: ZOC-1110521, IPA2-27389-01 — wymaga przynajmniej jednej cyfry (unika samych akronimów)
+    regex: "(?i)\\b(?=[A-Z0-9-./]*\\d)([A-Z]{1,6}-[0-9A-Z./-]{3,30})\\b"
+
+  - name: "alphanum_slash_multi"
+    # Typy: 2019/2010005/RZS/OBC/991001/120, 5581515/1 — wymaga przynajmniej jednej cyfry
+    regex: "(?i)\\b(?=[0-9A-Z/.-]*\\d)([0-9A-Z]{3,20}(?:/[0-9A-Z./-]{1,20}){1,})\\b"
+
+  - name: "long_numeric"
+    # Dłuższe czyste liczby (>=7 cyfr) — bez separatorów, by nie łapać części kwot
+    regex: "\\b\\d{7,}\\b"
+
+  - name: "fallback_labelled"
+    # Fallback wymagający etykiety/kontekstu (np. 'nr szkody: XYZ') i zawierający cyfrę;
+    # dodatkowo wyklucza bezpośrednie dopasowanie do kwot z przecinkiem/walutą
+    regex: "(?i)\\b(?:szkoda|nr szkody|numer szkody|roszczenie)\\s*[:#-]?\\s*((?=[A-Z0-9./_-]*\\d)[A-Z0-9][A-Z0-9./_-]{3,29})\\b(?![,\\d])(?!(?:\\s*(?:PLN|EUR|USD|zł|zl)\\b))"
