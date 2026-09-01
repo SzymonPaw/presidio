@@ -135,6 +135,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         previewMode: 'detections'
     };
 
+    var xlsxSelectionState = {
+        text: '',
+        part: '',
+        cellRef: '',
+        cellElement: null
+    };
+
+    pdfPreviewState.selectedManualFindingId = null;
+
     // Drag and drop
     if (fileLabel) {
         fileLabel.addEventListener('dragover', function (e) {
@@ -186,6 +195,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             documents.push({
                 file: file,
                 findings: [],
+                manualFindings: [],
                 analyzed: false,
                 status: 'Oczekuje na analizę'
             });
@@ -384,6 +394,277 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         });
     }
 
+    function getCurrentManualFindings() {
+        if (!documents[currentDocumentIndex]) {
+            return [];
+        }
+
+        if (!Array.isArray(documents[currentDocumentIndex].manualFindings)) {
+            documents[currentDocumentIndex].manualFindings = [];
+        }
+
+        return documents[currentDocumentIndex].manualFindings;
+    }
+
+    function getAllFindingEntries() {
+        var items = (currentFindings || []).map(function (entry) {
+            return Object.assign({}, entry);
+        });
+
+        var manualFindings = getCurrentManualFindings().filter(function (entry) {
+            return entry.enabled !== false;
+        });
+
+        manualFindings.forEach(function (entry) {
+            items.push(Object.assign({}, entry, {
+                manual: true,
+                entity_type: entry.entity_type || 'MANUAL',
+                marker: entry.marker || '[DODANE_RĘCZNIE]',
+                score: Number(entry.score) || 1,
+                count: 1,
+                raw_value: entry.raw_value || ''
+            }));
+        });
+
+        return items;
+    }
+
+    function addManualFindingForCell(partName, cellRef, rawValue) {
+        if (!isSelectedFileXlsx() || !documents[currentDocumentIndex]) {
+            return;
+        }
+
+        var value = (rawValue || '').trim();
+        if (!value) {
+            return;
+        }
+
+        var manualFindings = getCurrentManualFindings();
+        var duplicate = manualFindings.find(function (item) {
+            return item.xlsx_part === partName && item.xlsx_cell === cellRef && item.raw_value === value;
+        });
+
+        if (duplicate) {
+            duplicate.enabled = true;
+            renderPdfFindingsSidebar();
+            refreshXlsxManualHighlights();
+            return;
+        }
+
+        manualFindings.push({
+            id: 'manual-' + Date.now() + '-' + Math.random().toString(16).slice(2),
+            entity_type: 'MANUAL',
+            marker: '[DODANE_RĘCZNIE]',
+            raw_value: value,
+            score: 1.0,
+            reason: 'Dodane ręcznie',
+            xlsx_part: partName,
+            xlsx_cell: cellRef,
+            enabled: true,
+            manual: true
+        });
+
+        renderPdfFindingsSidebar();
+        refreshXlsxManualHighlights();
+    }
+
+    function resolveXlsxSelectionStateFromRange(range) {
+        if (!range || !range.commonAncestorContainer) {
+            return null;
+        }
+
+        var container = range.commonAncestorContainer;
+        var cell = container.nodeType === 1 ? container : container.parentElement;
+        var targetCell = cell && cell.closest ? cell.closest('.xlsx-preview-cell') : null;
+
+        if (!targetCell) {
+            return null;
+        }
+
+        var selectedText = (window.getSelection ? window.getSelection().toString() : '').trim();
+        if (!selectedText) {
+            return null;
+        }
+
+        var partName = targetCell.getAttribute('data-xlsx-part');
+        var cellRef = targetCell.getAttribute('data-xlsx-cell');
+        if (!partName || !cellRef) {
+            return null;
+        }
+
+        return {
+            text: selectedText,
+            part: partName,
+            cellRef: cellRef,
+            cellElement: targetCell
+        };
+    }
+
+    function clearXlsxSelectionState() {
+        xlsxSelectionState = {
+            text: '',
+            part: '',
+            cellRef: '',
+            cellElement: null
+        };
+        if (pdfViewerElement) {
+            pdfViewerElement.querySelectorAll('.xlsx-hit.is-selected-manual, .xlsx-hit.xlsx-manual-hit').forEach(function (mark) {
+                var parent = mark.parentNode;
+                if (!parent) {
+                    return;
+                }
+                var textNode = document.createTextNode(mark.textContent || '');
+                parent.replaceChild(textNode, mark);
+            });
+        }
+        if (window.getSelection) {
+            window.getSelection().removeAllRanges();
+        }
+        renderPdfFindingsSidebar();
+    }
+
+    function unwrapXlsxHighlights(cell) {
+        if (!cell) {
+            return;
+        }
+
+        cell.querySelectorAll('.xlsx-hit.xlsx-manual-hit, .xlsx-hit.is-selected-manual').forEach(function (mark) {
+            var parent = mark.parentNode;
+            if (!parent) {
+                return;
+            }
+            var textNode = document.createTextNode(mark.textContent || '');
+            parent.replaceChild(textNode, mark);
+        });
+    }
+
+    function wrapXlsxTextInMark(cell, value, className, manualId) {
+        if (!cell || !value) {
+            return null;
+        }
+
+        unwrapXlsxHighlights(cell);
+
+        var needle = String(value).trim();
+        if (!needle) {
+            return null;
+        }
+
+        var cellText = (cell.textContent || '').replace(/\r\n/g, '\n');
+        var matchIndex = cellText.toLowerCase().indexOf(needle.toLowerCase());
+        if (matchIndex < 0) {
+            return null;
+        }
+
+        var walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+        var textNodes = [];
+        while (walker.nextNode()) {
+            textNodes.push(walker.currentNode);
+        }
+
+        if (!textNodes.length) {
+            return null;
+        }
+
+        var currentIndex = 0;
+        var startNode = null;
+        var startOffset = 0;
+        var endNode = null;
+        var endOffset = 0;
+
+        for (var i = 0; i < textNodes.length; i += 1) {
+            var node = textNodes[i];
+            var nodeText = (node.textContent || '').replace(/\r\n/g, '\n');
+            var nextIndex = currentIndex + nodeText.length;
+
+            if (startNode === null && matchIndex >= currentIndex && matchIndex < nextIndex) {
+                startNode = node;
+                startOffset = matchIndex - currentIndex;
+            }
+
+            if (startNode !== null && matchIndex + needle.length <= nextIndex) {
+                endNode = node;
+                endOffset = matchIndex + needle.length - currentIndex;
+                break;
+            }
+
+            currentIndex = nextIndex;
+        }
+
+        if (!startNode || !endNode) {
+            return null;
+        }
+
+        var mark = null;
+        var range = document.createRange();
+        try {
+            range.setStart(startNode, startOffset);
+            range.setEnd(endNode, endOffset);
+            mark = document.createElement('mark');
+            mark.className = 'xlsx-hit ' + className;
+            if (manualId) {
+                mark.setAttribute('data-manual-finding-id', String(manualId));
+            }
+            range.surroundContents(mark);
+        } catch (error) {
+            var startText = startNode.textContent || '';
+            var endText = endNode.textContent || '';
+
+            if (startNode === endNode) {
+                var wholeText = startText;
+                var before = wholeText.slice(0, startOffset);
+                var matchText = wholeText.slice(startOffset, endOffset);
+                var after = wholeText.slice(endOffset);
+                var parent = startNode.parentNode;
+                if (before) {
+                    parent.insertBefore(document.createTextNode(before), startNode);
+                }
+                mark = document.createElement('mark');
+                mark.className = 'xlsx-hit ' + className;
+                if (manualId) {
+                    mark.setAttribute('data-manual-finding-id', String(manualId));
+                }
+                mark.textContent = matchText;
+                parent.insertBefore(mark, startNode);
+                if (after) {
+                    parent.insertBefore(document.createTextNode(after), startNode);
+                }
+                parent.removeChild(startNode);
+                return mark;
+            }
+
+            if (startNode.parentNode === endNode.parentNode) {
+                var parentNode = startNode.parentNode;
+                var prefix = startText.slice(0, startOffset);
+                var selectedText = startText.slice(startOffset);
+                if (prefix) {
+                    parentNode.insertBefore(document.createTextNode(prefix), startNode);
+                }
+                mark = document.createElement('mark');
+                mark.className = 'xlsx-hit ' + className;
+                if (manualId) {
+                    mark.setAttribute('data-manual-finding-id', String(manualId));
+                }
+                mark.textContent = selectedText;
+                parentNode.insertBefore(mark, startNode);
+                parentNode.removeChild(startNode);
+
+                var endAfter = endText.slice(endOffset);
+                if (endAfter) {
+                    parentNode.insertBefore(document.createTextNode(endAfter), endNode);
+                }
+                parentNode.removeChild(endNode);
+                return mark;
+            }
+        }
+
+        if (mark && manualId) {
+            mark.setAttribute('data-manual-finding-id', String(manualId));
+        }
+
+        return mark;
+    }
+
     function renderFindings(findings) {
         currentFindings =
             findings || [];
@@ -405,7 +686,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
         var html = noFindingsMessage + '<h2>Wykryte dane</h2>';
         html += '<table class="findings-table"><thead><tr><th>Typ</th><th>Znacznik</th><th>Pokrycie</th><th>Wystąpienia</th><th>Anonimizuj</th>';
-        // html += '<table class="findings-table"><thead><tr><th>Typ</th><th>Znacznik</th><th>Siła</th><th>Powód</th><th>Liczba</th><th>Anonimizuj</th>';
         if (isPdf || isDocx || isXlsx) {
             html += '<th>Akcje</th>';
         }
@@ -548,6 +828,19 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 statusDiv.textContent = 'Anonimizowanie...';
 
                 var formData = new FormData();
+                var manualFindings = getCurrentManualFindings().filter(function (item) {
+                    return item.enabled !== false;
+                }).map(function (item) {
+                    return {
+                        entity_type: item.entity_type || 'MANUAL',
+                        marker: item.marker || '[DODANE_RĘCZNIE]',
+                        raw_value: item.raw_value,
+                        score: item.score || 1,
+                        reason: item.reason || 'Dodane ręcznie',
+                        xlsx_part: item.xlsx_part,
+                        xlsx_cell: item.xlsx_cell,
+                    };
+                });
 
                 formData.append(
                     'file',
@@ -557,6 +850,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 formData.append(
                     'confirmed_ids',
                     JSON.stringify(checkedIds)
+                );
+
+                formData.append(
+                    'manual_findings',
+                    JSON.stringify(manualFindings)
                 );
 
                 var downloadFilename = null;
@@ -773,8 +1071,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     function getFindingById(
         findingId
     ) {
+        var allFindings = getAllFindingEntries();
         return (
-            currentFindings.find(
+            allFindings.find(
                 function (finding) {
                     return (
                         String(finding.id)
@@ -1584,6 +1883,24 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     var xlsxFormData = new FormData();
                     xlsxFormData.append('file', selectedFile);
                     xlsxFormData.append('preview_mode', pdfPreviewState.previewMode || 'detections');
+
+                    var manualFindings = getCurrentManualFindings().filter(function (item) {
+                        return item.enabled !== false;
+                    }).map(function (item) {
+                        return {
+                            id: item.id,
+                            entity_type: item.entity_type || 'MANUAL',
+                            marker: item.marker || '[DODANE_RĘCZNIE]',
+                            raw_value: item.raw_value,
+                            score: item.score || 1,
+                            reason: item.reason || 'Dodane ręcznie',
+                            xlsx_part: item.xlsx_part,
+                            xlsx_cell: item.xlsx_cell,
+                            manual: true,
+                        };
+                    });
+                    xlsxFormData.append('manual_findings', JSON.stringify(manualFindings));
+
                     var xlsxResponse = await fetch('/preview-xlsx', { method: 'POST', body: xlsxFormData });
                     var xlsxPayload = await xlsxResponse.json();
                     if (!xlsxResponse.ok || xlsxPayload.error) {
@@ -1592,6 +1909,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     pdfViewerElement.innerHTML = xlsxPayload.html || '<div class="docx-preview-empty">Brak treści do podglądu.</div>';
                     pdfViewerElement.classList.add('docx-preview-container');
                     bindXlsxSheetTabs();
+                    bindXlsxSelectionHandlers();
+                    refreshXlsxManualHighlights();
                 } else {
                     var previewBytes = selectedFile;
                     if ((pdfPreviewState.previewMode || 'detections') === 'output') {
@@ -1794,25 +2113,45 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
         pdfViewerElement.querySelectorAll('.docx-hit, .xlsx-hit').forEach(function (hit) {
             var findingId = hit.dataset.docxFindingId || hit.dataset.xlsxFindingId;
-            if (!findingId) {
-                return;
+            var manualFindingId = hit.dataset.manualFindingId || null;
+            var manualFinding = null;
+            var finding = null;
+
+            if (manualFindingId) {
+                manualFinding = getCurrentManualFindings().find(function (entry) {
+                    return String(entry.id) === String(manualFindingId);
+                });
             }
 
-            var finding = getFindingById(findingId);
-            var active = Boolean(finding && isFindingActive(findingId));
-            var selected = String(pdfPreviewState.selectedFindingId) === String(findingId) && (active || outputMode);
+            if (!manualFinding) {
+                finding = findingId ? getFindingById(findingId) : null;
+            }
+
+            var active = manualFinding ? manualFinding.enabled !== false : Boolean(finding && isFindingActive(findingId));
+            var selected = manualFinding
+                ? String(pdfPreviewState.selectedManualFindingId) === String(manualFindingId)
+                : String(pdfPreviewState.selectedFindingId) === String(findingId);
+            selected = selected && (active || outputMode);
 
             // Output mode: if anonymize enabled (active) -> show marker (is-output).
             // If anonymize disabled (not active) -> show raw value as plain text (do not hide).
             if (outputMode) {
+                if (manualFinding) {
+                    hit.classList.add('xlsx-manual-hit');
+                    hit.dataset.manualFindingId = String(manualFindingId);
+                } else {
+                    hit.classList.remove('xlsx-manual-hit');
+                    delete hit.dataset.manualFindingId;
+                }
+
                 if (active) {
-                    // show marker
                     hit.classList.remove('is-muted');
                     hit.classList.remove('is-hidden');
                     hit.classList.add('is-output');
-                    // ensure displayed value is the marker
                     try {
-                        var marker = (finding && finding.marker) || null;
+                        var marker = (manualFinding && manualFinding.marker)
+                            || (finding && finding.marker)
+                            || null;
                         if (marker !== null && marker !== undefined) {
                             hit.textContent = String(marker);
                         }
@@ -1821,17 +2160,17 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     }
                     hit.classList.toggle('is-selected', selected);
                 } else {
-                    // show raw value as plain text
                     hit.classList.remove('is-output');
                     hit.classList.remove('is-search-match');
                     hit.classList.remove('is-selected');
                     hit.classList.remove('is-hidden');
                     hit.classList.add('is-muted');
                     try {
-                        var rawv = (finding && (finding.raw_value || finding.rawValue || finding.rawValue)) || null;
-                        if (rawv === null || rawv === undefined) {
-                            // fall back to marker or existing text
-                            rawv = (finding && finding.marker) || hit.textContent;
+                        var rawv = manualFinding
+                            ? (manualFinding.raw_value || manualFinding.rawValue || '')
+                            : (finding && (finding.raw_value || finding.rawValue || finding.rawValue)) || null;
+                        if (rawv === null || rawv === undefined || rawv === '') {
+                            rawv = (manualFinding && manualFinding.marker) || (finding && finding.marker) || hit.textContent;
                         }
                         hit.textContent = String(rawv);
                     } catch (e) {
@@ -1846,7 +2185,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             hit.classList.toggle('is-hidden', false);
             hit.classList.toggle('is-output', false);
             hit.classList.toggle('is-muted', mutedInDetections);
-            hit.classList.toggle('is-selected', String(pdfPreviewState.selectedFindingId) === String(findingId) && !mutedInDetections);
+            hit.classList.toggle('is-selected', selected && !mutedInDetections);
         });
     }
 
@@ -1874,6 +2213,221 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 });
             });
         });
+    }
+
+    function confirmManualXlsxSelection() {
+        if (!xlsxSelectionState.text) {
+            return;
+        }
+
+        addManualFindingForCell(
+            xlsxSelectionState.part,
+            xlsxSelectionState.cellRef,
+            xlsxSelectionState.text
+        );
+
+        if (xlsxSelectionState.cellElement) {
+            wrapXlsxTextInMark(xlsxSelectionState.cellElement, xlsxSelectionState.text, 'xlsx-manual-hit');
+        }
+
+        xlsxSelectionState = {
+            text: '',
+            part: '',
+            cellRef: '',
+            cellElement: null
+        };
+
+        if (pdfViewerElement) {
+            pdfViewerElement.querySelectorAll('.xlsx-preview-cell.is-selected-manual').forEach(function (cell) {
+                cell.classList.remove('is-selected-manual');
+            });
+        }
+
+        if (window.getSelection) {
+            window.getSelection().removeAllRanges();
+        }
+
+        renderPdfFindingsSidebar();
+    }
+
+    function bindManualXlsxHitEvents() {
+        if (!pdfViewerElement || !isSelectedFileXlsx()) {
+            return;
+        }
+
+        pdfViewerElement.querySelectorAll('.xlsx-hit.xlsx-manual-hit').forEach(function (hit) {
+            if (hit.dataset.manualXlsxBound === 'true') {
+                return;
+            }
+
+            hit.dataset.manualXlsxBound = 'true';
+            hit.addEventListener('click', function (event) {
+                event.stopPropagation();
+                if (!hit.dataset.manualFindingId) {
+                    return;
+                }
+                focusManualXlsxFinding(hit.dataset.manualFindingId);
+            });
+        });
+    }
+
+    function clearXlsxSelectionStateForMode(mode) {
+        if (!pdfViewerElement || !isSelectedFileXlsx()) {
+            return;
+        }
+
+        if (mode === 'manual') {
+            pdfPreviewState.selectedFindingId = null;
+            pdfViewerElement.querySelectorAll('.xlsx-hit[data-xlsx-finding-id]').forEach(function (hit) {
+                hit.classList.remove('is-selected');
+            });
+            if (pdfFindingsList) {
+                pdfFindingsList.querySelectorAll('.pdf-finding-item.is-selected').forEach(function (item) {
+                    item.classList.remove('is-selected');
+                });
+            }
+        }
+
+        if (mode === 'auto') {
+            pdfPreviewState.selectedManualFindingId = null;
+            pdfViewerElement.querySelectorAll('.xlsx-hit.xlsx-manual-hit').forEach(function (hit) {
+                hit.classList.remove('is-selected');
+            });
+            if (pdfFindingsList) {
+                pdfFindingsList.querySelectorAll('.pdf-manual-item.is-selected').forEach(function (item) {
+                    item.classList.remove('is-selected');
+                });
+            }
+        }
+    }
+
+    function syncSelectedXlsxManualMarks() {
+        if (!pdfViewerElement || !isSelectedFileXlsx()) {
+            return;
+        }
+
+        var selectedManualId = pdfPreviewState.selectedManualFindingId || null;
+        pdfViewerElement.querySelectorAll('.xlsx-hit.xlsx-manual-hit').forEach(function (hit) {
+            var isSelected = selectedManualId && String(hit.dataset.manualFindingId) === String(selectedManualId);
+            hit.classList.toggle('is-selected', Boolean(isSelected));
+        });
+    }
+
+    function refreshXlsxManualHighlights() {
+        if (!pdfViewerElement || !isSelectedFileXlsx()) {
+            return;
+        }
+
+        var outputMode = (pdfPreviewState.previewMode || 'detections') === 'output';
+
+        if (outputMode) {
+            pdfViewerElement.querySelectorAll('.xlsx-hit.xlsx-manual-hit').forEach(function (hit) {
+                var manualId = hit.dataset.manualFindingId || null;
+                var manualFinding = manualId ? getCurrentManualFindings().find(function (entry) {
+                    return String(entry.id) === String(manualId);
+                }) : null;
+
+                var active = Boolean(manualFinding && manualFinding.enabled !== false);
+                hit.classList.toggle('is-output', active);
+                hit.classList.toggle('is-muted', !active);
+                hit.classList.toggle('is-selected', Boolean(active && String(pdfPreviewState.selectedManualFindingId || '') === String(manualId)));
+
+                if (active) {
+                    hit.classList.remove('is-hidden');
+                    hit.textContent = String((manualFinding && manualFinding.marker) || '[DODANE_RĘCZNIE]');
+                } else {
+                    hit.classList.remove('is-output');
+                    hit.classList.remove('is-selected');
+                    hit.classList.remove('is-hidden');
+                    hit.classList.add('is-muted');
+                    hit.textContent = String((manualFinding && (manualFinding.raw_value || manualFinding.rawValue || '')) || hit.textContent || '');
+                }
+            });
+
+            bindManualXlsxHitEvents();
+            syncSelectedXlsxManualMarks();
+            return;
+        }
+
+        pdfViewerElement.querySelectorAll('.xlsx-preview-cell').forEach(function (cell) {
+            unwrapXlsxHighlights(cell);
+        });
+
+        getCurrentManualFindings().filter(function (entry) {
+            return entry.enabled !== false;
+        }).forEach(function (entry) {
+            if (!entry.xlsx_part || !entry.xlsx_cell || !entry.raw_value) {
+                return;
+            }
+
+            var targetCell = null;
+            pdfViewerElement.querySelectorAll('.xlsx-preview-cell').forEach(function (cell) {
+                if (!targetCell && cell.getAttribute('data-xlsx-part') === entry.xlsx_part && cell.getAttribute('data-xlsx-cell') === entry.xlsx_cell) {
+                    targetCell = cell;
+                }
+            });
+
+            if (targetCell) {
+                wrapXlsxTextInMark(targetCell, entry.raw_value, 'xlsx-manual-hit', entry.id);
+            }
+        });
+
+        syncSelectedXlsxManualMarks();
+        bindManualXlsxHitEvents();
+    }
+
+    function syncXlsxSelectionFromCurrentRange() {
+        var selection = window.getSelection ? window.getSelection() : null;
+        if (!selection || selection.rangeCount === 0) {
+            return false;
+        }
+
+        var selectedText = selection.toString().trim();
+        if (!selectedText) {
+            return false;
+        }
+
+        var resolved = resolveXlsxSelectionStateFromRange(selection.getRangeAt(0));
+        if (!resolved) {
+            return false;
+        }
+
+        xlsxSelectionState = resolved;
+        pdfViewerElement.querySelectorAll('.xlsx-preview-cell.is-selected-manual').forEach(function (cell) {
+            cell.classList.remove('is-selected-manual');
+        });
+        if (resolved.cellElement) {
+            resolved.cellElement.classList.add('is-selected-manual');
+        }
+        pdfPreviewState.selectedManualFindingId = null;
+        renderPdfFindingsSidebar();
+        return true;
+    }
+
+    function bindXlsxSelectionHandlers() {
+        if (!pdfViewerElement || !isSelectedFileXlsx()) {
+            return;
+        }
+
+        pdfViewerElement.querySelectorAll('.xlsx-preview-cell').forEach(function (cell) {
+            cell.addEventListener('mouseup', function () {
+                syncXlsxSelectionFromCurrentRange();
+            });
+
+            cell.addEventListener('click', function () {
+                syncXlsxSelectionFromCurrentRange();
+            });
+        });
+
+        document.addEventListener('selectionchange', function () {
+            if (!isSelectedFileXlsx() || !pdfViewerElement) {
+                return;
+            }
+
+            syncXlsxSelectionFromCurrentRange();
+        });
+
+        refreshXlsxManualHighlights();
     }
 
     function renderPdfOverlayForPage(
@@ -2254,6 +2808,104 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     // Prawy panel findings
     // =========================================================
 
+    function findXlsxCellByManualEntry(entry) {
+        if (!entry || !entry.xlsx_part || !entry.xlsx_cell || !pdfViewerElement) {
+            return null;
+        }
+
+        var cell = null;
+        pdfViewerElement.querySelectorAll('.xlsx-preview-cell').forEach(function (item) {
+            if (!cell && item.getAttribute('data-xlsx-part') === entry.xlsx_part && item.getAttribute('data-xlsx-cell') === entry.xlsx_cell) {
+                cell = item;
+            }
+        });
+
+        return cell;
+    }
+
+    function activateXlsxSheetForCell(cell) {
+        if (!cell || !pdfViewerElement) {
+            return;
+        }
+
+        var panel = cell.closest('.xlsx-sheet-panel');
+        if (!panel) {
+            return;
+        }
+
+        var sheetName = panel.getAttribute('data-sheet-name');
+        if (!sheetName) {
+            return;
+        }
+
+        pdfViewerElement.querySelectorAll('.xlsx-sheet-tab').forEach(function (tab) {
+            tab.classList.toggle('is-active', tab.getAttribute('data-sheet-name') === sheetName);
+        });
+
+        pdfViewerElement.querySelectorAll('.xlsx-sheet-panel').forEach(function (item) {
+            item.classList.toggle('is-active', item === panel);
+        });
+    }
+
+    function scrollManualSidebarToSelection() {
+        if (!pdfFindingsList || !isSelectedFileXlsx()) {
+            return;
+        }
+
+        var selectedItem = pdfFindingsList.querySelector('.pdf-manual-item.is-selected');
+        if (!selectedItem) {
+            return;
+        }
+
+        requestAnimationFrame(function () {
+            selectedItem.scrollIntoView({
+                block: 'nearest',
+                behavior: 'smooth'
+            });
+        });
+    }
+
+    function focusManualXlsxFinding(manualId) {
+        if (!manualId || !pdfViewerElement || !isSelectedFileXlsx()) {
+            return;
+        }
+
+        clearXlsxSelectionStateForMode('manual');
+
+        var manualFinding = getCurrentManualFindings().find(function (entry) {
+            return String(entry.id) === String(manualId);
+        });
+
+        if (!manualFinding) {
+            return;
+        }
+
+        var targetCell = findXlsxCellByManualEntry(manualFinding);
+        if (!targetCell) {
+            return;
+        }
+
+        pdfPreviewState.selectedManualFindingId = String(manualId);
+        syncSelectedXlsxManualMarks();
+        activateXlsxSheetForCell(targetCell);
+
+        var container = pdfViewerContainer || pdfViewerElement;
+        if (container && typeof targetCell.getBoundingClientRect === 'function') {
+            var targetRect = targetCell.getBoundingClientRect();
+            var containerRect = container.getBoundingClientRect();
+            var targetScrollTop = container.scrollTop + (targetRect.top - containerRect.top) - (containerRect.height * 0.35);
+            container.scrollTo({
+                top: Math.max(0, targetScrollTop),
+                behavior: 'smooth'
+            });
+        } else {
+            targetCell.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+
+        renderPdfFindingsSidebar();
+        requestAnimationFrame(scrollManualSidebarToSelection);
+    }
+
     function renderPdfFindingsSidebar() {
 
         if (!pdfFindingsList) {
@@ -2262,6 +2914,49 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 
         var html = '';
+
+        if (isSelectedFileXlsx()) {
+            var manualFindings = getCurrentManualFindings();
+            var selectedText = xlsxSelectionState.text || '';
+            html += '<div class="pdf-manual-section">';
+            html += '<div class="pdf-manual-header">';
+            html += '<span>Dodane ręcznie</span>';
+            html += '<span>' + manualFindings.length + '</span>';
+            html += '</div>';
+            html += '<div class="pdf-manual-body">';
+
+            if (selectedText) {
+                html += '<div class="pdf-manual-selection">';
+                html += '<div class="pdf-manual-value">' + escapeHtml(selectedText) + '</div>';
+                html += '<button type="button" id="manual-xlsx-add-button" class="btn btn-primary btn-sm">Dodaj zaznaczenie</button>';
+                html += '</div>';
+            }
+
+            if (!manualFindings.length) {
+                if (!selectedText) {
+                    html += '<div class="pdf-manual-empty">Zaznacz tekst w komórce, a następnie kliknij "Dodaj zaznaczenie".</div>';
+                }
+            } else {
+                manualFindings.forEach(function (manualFinding) {
+                    var manualId = manualFinding.id;
+                    var selectedManual = String(pdfPreviewState.selectedManualFindingId || '') === String(manualId);
+                    html += '<div class="pdf-manual-item' + (selectedManual ? ' is-selected' : '') + '" data-manual-id="' + escapeHtml(String(manualId)) + '">';
+                    html += '<div class="pdf-manual-info">';
+                    html += '<span class="pdf-manual-label">' + escapeHtml(manualFinding.entity_type || 'Zaznaczenie') + '</span>';
+                    html += '<span class="pdf-manual-value">' + escapeHtml(manualFinding.raw_value || '') + '</span>';
+                    html += '</div>';
+                    html += '<div class="checkbox-wrapper-6">';
+                    html += '<input class="tgl tgl-light pdf-manual-toggle" id="manual-toggle-' + escapeHtml(String(manualId)) + '" type="checkbox" data-manual-id="' + escapeHtml(String(manualId)) + '"' + (manualFinding.enabled !== false ? ' checked' : '') + '>';
+                    html += '<label class="tgl-btn" for="manual-toggle-' + escapeHtml(String(manualId)) + '"></label>';
+                    html += '</div>';
+                    html += '<button type="button" class="btn btn-danger btn-sm pdf-manual-remove" data-manual-id="' + escapeHtml(String(manualId)) + '">Usuń</button>';
+                    html += '</div>';
+                });
+            }
+
+            html += '</div>';
+            html += '</div>';
+        }
 
 
         currentFindings.forEach(
@@ -2494,6 +3189,18 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         pdfFindingsList.innerHTML =
             html;
 
+        var manualAddButton = pdfFindingsList.querySelector('#manual-xlsx-add-button');
+        if (manualAddButton) {
+            manualAddButton.addEventListener('click', function () {
+                confirmManualXlsxSelection();
+            });
+        }
+
+        if (isSelectedFileXlsx()) {
+            refreshXlsxManualHighlights();
+            requestAnimationFrame(scrollManualSidebarToSelection);
+        }
+
 
         var jumpButtons =
             pdfFindingsList.querySelectorAll(
@@ -2557,6 +3264,49 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 );
             }
         );
+
+        var manualItems = pdfFindingsList.querySelectorAll('.pdf-manual-item');
+        manualItems.forEach(function (item) {
+            item.addEventListener('click', function (event) {
+                if (event.target.closest('.pdf-manual-toggle') || event.target.closest('.pdf-manual-remove')) {
+                    return;
+                }
+                var manualId = item.getAttribute('data-manual-id');
+                if (manualId) {
+                    focusManualXlsxFinding(manualId);
+                }
+            });
+        });
+
+        var manualToggles = pdfFindingsList.querySelectorAll('.pdf-manual-toggle');
+        manualToggles.forEach(function (checkbox) {
+            checkbox.addEventListener('change', function () {
+                var manualId = checkbox.getAttribute('data-manual-id');
+                var manualFindings = getCurrentManualFindings();
+                var item = manualFindings.find(function (entry) {
+                    return String(entry.id) === String(manualId);
+                });
+                if (item) {
+                    item.enabled = checkbox.checked;
+                }
+            });
+        });
+
+        var manualRemoveButtons = pdfFindingsList.querySelectorAll('.pdf-manual-remove');
+        manualRemoveButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                var manualId = button.getAttribute('data-manual-id');
+                var manualFindings = getCurrentManualFindings();
+                var index = manualFindings.findIndex(function (entry) {
+                    return String(entry.id) === String(manualId);
+                });
+                if (index >= 0) {
+                    manualFindings.splice(index, 1);
+                    renderPdfFindingsSidebar();
+                    refreshXlsxManualHighlights();
+                }
+            });
+        });
 
 
         var prevButtons =
@@ -3031,7 +3781,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             pdfPreviewState.occurrenceIndex[findingId] = current;
         }
 
+        clearXlsxSelectionStateForMode('auto');
         pdfPreviewState.selectedFindingId = findingId;
+        pdfPreviewState.selectedManualFindingId = null;
         renderPdfFindingsSidebar();
 
         requestAnimationFrame(function () {
@@ -3039,8 +3791,16 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         });
 
         pdfViewerElement.querySelectorAll('.docx-hit, .xlsx-hit').forEach(function (hit) {
-            hit.classList.remove('is-selected');
+            if (!hit.classList.contains('xlsx-manual-hit')) {
+                hit.classList.remove('is-selected');
+            }
         });
+
+        if (isSelectedFileXlsx()) {
+            pdfViewerElement.querySelectorAll('.xlsx-hit.xlsx-manual-hit').forEach(function (hit) {
+                hit.classList.remove('is-selected');
+            });
+        }
 
         var docxHits = Array.from(
             pdfViewerElement.querySelectorAll(

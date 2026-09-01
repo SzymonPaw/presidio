@@ -637,13 +637,18 @@ class OrganizationRecognizer(EntityRecognizer):
             reverse=True,
         )
 
-        escaped_forms = [
-            re.escape(form).replace(
+        escaped_forms = []
+        for form in sorted_forms:
+            pattern = re.escape(form)
+            pattern = pattern.replace(
                 r"\ ",
-                r"[ \t\r\n]+",
+                r"[ \t\r\n]*",
             )
-            for form in sorted_forms
-        ]
+            pattern = pattern.replace(
+                r"\.",
+                r"\.?",
+            )
+            escaped_forms.append(pattern)
 
         forms_pattern = "|".join(
             escaped_forms

@@ -448,6 +448,31 @@ def _register_routes(app: Flask) -> None:
         file_bytes = file.read()
         try:
             findings = _get_findings_for_file(file_bytes, file.filename)
+
+            manual_findings_raw = request.form.get("manual_findings", "[]")
+            try:
+                manual_findings = json.loads(manual_findings_raw) if manual_findings_raw else []
+            except Exception:
+                manual_findings = []
+
+            for item in manual_findings:
+                if not isinstance(item, dict):
+                    continue
+                raw_value = str(item.get("raw_value", "")).strip()
+                if not raw_value:
+                    continue
+                findings.append({
+                    "id": item.get("id") or f"manual-{len(findings)}-{abs(hash(raw_value))}",
+                    "entity_type": item.get("entity_type", "MANUAL"),
+                    "marker": item.get("marker", "[DODANE_RĘCZNIE]"),
+                    "raw_value": raw_value,
+                    "score": float(item.get("score", 1.0)),
+                    "reason": item.get("reason", "Dodane ręcznie"),
+                    "xlsx_part": item.get("xlsx_part"),
+                    "xlsx_cell": item.get("xlsx_cell"),
+                    "manual": True,
+                })
+
             mode = request.form.get("preview_mode", "detections")
             preview_html = xlsx_adapter.build_preview_html(file_bytes, findings, mode=mode)
             return jsonify({"html": preview_html})
@@ -473,6 +498,28 @@ def _register_routes(app: Flask) -> None:
         try:
             findings = _get_findings_for_file(file_bytes, file.filename)
             confirmed_findings = [f for f in findings if f["id"] in confirmed_ids]
+
+            manual_findings_raw = request.form.get("manual_findings", "[]")
+            try:
+                manual_findings = json.loads(manual_findings_raw) if manual_findings_raw else []
+            except Exception:
+                manual_findings = []
+
+            for item in manual_findings:
+                if not isinstance(item, dict):
+                    continue
+                raw_value = str(item.get("raw_value", "")).strip()
+                if not raw_value:
+                    continue
+                confirmed_findings.append({
+                    "entity_type": item.get("entity_type", "MANUAL"),
+                    "marker": item.get("marker", "[DODANE_RĘCZNIE]"),
+                    "raw_value": raw_value,
+                    "score": float(item.get("score", 1.0)),
+                    "reason": item.get("reason", "Dodane ręcznie"),
+                    "xlsx_part": item.get("xlsx_part"),
+                    "xlsx_cell": item.get("xlsx_cell"),
+                })
 
             file_ext = file.filename.lower()
 

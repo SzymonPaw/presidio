@@ -567,7 +567,13 @@ class XlsxAdapter:
                             span_html += f' colspan="{end_col - col_index + 1}"'
                         if end_row > row_index:
                             span_html += f' rowspan="{end_row - row_index + 1}"'
-                    cell_html = f'<td class="xlsx-preview-cell"{style_html}{span_html}>{rendered}</td>'
+                    cell_html = (
+                        f'<td class="xlsx-preview-cell"'
+                        f' data-xlsx-part="{self._escape_attr(part_name)}"'
+                        f' data-xlsx-cell="{self._escape_attr(cell_ref)}"'
+                        f' data-xlsx-value="{self._escape_attr(text)}"'
+                        f'{style_html}{span_html}>{rendered}</td>'
+                    )
                     cells.append(cell_html)
                 row_style = row_geometry.get(row_index, {})
                 row_hidden = ' style="display:none"' if row_style.get("hidden") else ""
@@ -805,9 +811,20 @@ class XlsxAdapter:
                 marker = str(finding.get("marker") or raw).strip() or raw
                 display = marker if mode == "output" else raw
                 finding_id = finding.get("id")
-                attrs = f' data-xlsx-finding-id="{self._escape_attr(str(finding_id))}"' if finding_id is not None else ""
-                class_name = "xlsx-hit is-output" if mode == "output" else "xlsx-hit"
-                parts.append(f'<mark class="{class_name}"{attrs}>{self._escape_text(display)}</mark>')
+                manual_id = finding.get("id") if finding.get("manual") else None
+                attrs = []
+                if finding_id is not None:
+                    attrs.append(f'data-xlsx-finding-id="{self._escape_attr(str(finding_id))}"')
+                if manual_id is not None:
+                    attrs.append(f'data-manual-finding-id="{self._escape_attr(str(manual_id))}"')
+                extra_classes = []
+                if finding.get("manual"):
+                    extra_classes.append("xlsx-manual-hit")
+                if mode == "output":
+                    extra_classes.append("is-output")
+                class_name = " ".join(["xlsx-hit"] + extra_classes)
+                attrs_html = (" " + " ".join(attrs)) if attrs else ""
+                parts.append(f'<mark class="{class_name}"{attrs_html}>{self._escape_text(display)}</mark>')
             last = end
 
         if last < len(text):

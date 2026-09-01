@@ -6,6 +6,15 @@ from src.documents.pdf_adapter import PdfAdapter
 from src.documents.docx_adapter import DocxAdapter
 from src.documents.xlsx_adapter import XlsxAdapter
 from src.anonymization.service import AnonymizationService
+from src.anonymization.rule_engine import OrganizationRecognizer
+
+def test_organization_recognizer_matches_compact_legal_form():
+    text = "XYZ BROKERZY UBEZPIECZENIOWI SP.Z O.O."
+    results = OrganizationRecognizer().analyze(text, ["ORGANIZATION"])
+
+    assert results
+    assert any(r.entity_type == "ORGANIZATION" and text[r.start:r.end] == text for r in results)
+
 
 def test_pdf_no_regression():
     # Sprawdzamy czy interfejs pdf_adapter nie spsuł się
