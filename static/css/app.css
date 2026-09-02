@@ -499,7 +499,7 @@ h1 {
     height: 100%;
     padding: 20px;
     overflow: auto;
-    background: #f8f9fb;
+    background: #808080;
     color: #1f2937;
 }
 
@@ -627,6 +627,11 @@ h1 {
 .docx-hit.is-search-match {
     background: rgba(52, 152, 219, 0.25);
     box-shadow: inset 0 0 0 1px rgba(52, 152, 219, 0.7);
+}
+
+.docx-hit.is-search-first-match {
+    background: rgba(40, 167, 69, 0.28);
+    box-shadow: inset 0 0 0 2px rgba(40, 167, 69, 0.9);
 }
 
 .docx-hit.is-selected {

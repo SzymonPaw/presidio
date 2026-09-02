@@ -146,7 +146,16 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         scale: 1
     };
 
+    var docxZoomState = {
+        scale: 1
+    };
+
     var xlsxSearchState = {
+        hits: [],
+        currentIndex: -1
+    };
+
+    var docxSearchState = {
         hits: [],
         currentIndex: -1
     };
@@ -2037,7 +2046,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                             renderEndnotes: true
                         }
                     );
+                    pdfViewerElement.dataset.docxOriginalHtml = pdfViewerElement.innerHTML;
+                    applyDocxZoom();
+                    updatePdfZoomValue();
                     decorateDocxFindings((pdfPreviewState.previewMode || 'detections') === 'output');
+                    pdfViewerElement.dataset.docxOriginalHtml = pdfViewerElement.innerHTML;
                 }
             }
 
@@ -4423,6 +4436,21 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         }
     }
 
+    function applyDocxZoom() {
+        if (!pdfViewerElement || !isSelectedFileDocx()) {
+            return;
+        }
+
+        var scale = Number(docxZoomState.scale) || 1;
+        scale = Math.min(Math.max(scale, 0.5), 2.5);
+        docxZoomState.scale = scale;
+
+        if (pdfViewerElement) {
+            pdfViewerElement.style.zoom = String(scale);
+            pdfViewerElement.style.transform = 'none';
+        }
+    }
+
     function updatePdfZoomValue() {
         if (!pdfZoomValue) {
             return;
@@ -4436,6 +4464,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
         if (isSelectedFileXlsx()) {
             pdfZoomValue.textContent = Math.round((Number(xlsxZoomState.scale) || 1) * 100) + '%';
+            return;
+        }
+
+        if (isSelectedFileDocx()) {
+            pdfZoomValue.textContent = Math.round((Number(docxZoomState.scale) || 1) * 100) + '%';
         }
     }
 
@@ -4453,6 +4486,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 if (isSelectedFileXlsx()) {
                     xlsxZoomState.scale = Number((Number(xlsxZoomState.scale) || 1) * 1.15);
                     applyXlsxZoom();
+                    updatePdfZoomValue();
+                    return;
+                }
+
+                if (isSelectedFileDocx()) {
+                    docxZoomState.scale = Number((Number(docxZoomState.scale) || 1) * 1.15);
+                    applyDocxZoom();
                     updatePdfZoomValue();
                 }
             }
@@ -4474,6 +4514,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     xlsxZoomState.scale = Number((Number(xlsxZoomState.scale) || 1) / 1.15);
                     applyXlsxZoom();
                     updatePdfZoomValue();
+                    return;
+                }
+
+                if (isSelectedFileDocx()) {
+                    docxZoomState.scale = Number((Number(docxZoomState.scale) || 1) / 1.15);
+                    applyDocxZoom();
+                    updatePdfZoomValue();
                 }
             }
         );
@@ -4493,6 +4540,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 if (isSelectedFileXlsx()) {
                     xlsxZoomState.scale = 1;
                     applyXlsxZoom();
+                    updatePdfZoomValue();
+                    return;
+                }
+
+                if (isSelectedFileDocx()) {
+                    docxZoomState.scale = 1;
+                    applyDocxZoom();
                     updatePdfZoomValue();
                 }
             }
@@ -4634,6 +4688,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
         pdfViewerElement.querySelectorAll('.xlsx-hit.is-search-match, .xlsx-hit.is-search-first-match').forEach(function (hit) {
             if (!hit.parentNode) {
+                return;
+            }
+
+            if (hit.dataset.xlsxFindingId || hit.dataset.manualFindingId) {
+                hit.classList.remove('is-search-match');
+                hit.classList.remove('is-search-first-match');
                 return;
             }
 
@@ -4813,26 +4873,176 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         }
     }
 
-    function applyDocxSearch(query) {
-        if (!pdfViewerElement || !pdfSearchInput) {
+    function clearDocxSearchHighlights() {
+        if (!pdfViewerElement || !isSelectedFileDocx()) {
             return;
         }
 
-        var q = (query || '').trim().toLowerCase();
-        var hits = pdfViewerElement.querySelectorAll('.docx-hit, .xlsx-hit');
-
-        hits.forEach(function (hit) {
-            if (!q) {
-                hit.classList.remove('is-search-match');
-                hit.style.background = '';
+        pdfViewerElement.querySelectorAll('.docx-hit.is-search-match, .docx-hit.is-search-first-match').forEach(function (hit) {
+            if (!hit.parentNode) {
                 return;
             }
 
-            var text = hit.textContent || '';
-            var match = text.toLowerCase().indexOf(q) !== -1;
-            hit.classList.toggle('is-search-match', match);
-            hit.style.background = match ? 'rgba(52, 152, 219, 0.2)' : '';
+            if (hit.dataset.docxFindingId) {
+                hit.classList.remove('is-search-match');
+                hit.classList.remove('is-search-first-match');
+                return;
+            }
+
+            var textNode = document.createTextNode(hit.textContent || '');
+            hit.parentNode.replaceChild(textNode, hit);
         });
+
+        docxSearchState.hits = [];
+        docxSearchState.currentIndex = -1;
+    }
+
+    function rebuildDocxSearchMatches(query) {
+        if (!pdfViewerElement || !isSelectedFileDocx()) {
+            return;
+        }
+
+        var q = (query || '').trim();
+        if (!q) {
+            clearDocxSearchHighlights();
+            return;
+        }
+
+        var baseHtml = pdfViewerElement.dataset.docxOriginalHtml || pdfViewerElement.innerHTML;
+        var root = document.createElement('div');
+        root.innerHTML = baseHtml;
+
+        var qLower = q.toLowerCase();
+        var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, function (textNode) {
+            var parent = textNode.parentElement;
+            if (!parent || parent.closest('.docx-hit, .xlsx-hit, style, script')) {
+                return NodeFilter.FILTER_REJECT;
+            }
+            return NodeFilter.FILTER_ACCEPT;
+        });
+
+        var textNodes = [];
+        while (walker.nextNode()) {
+            textNodes.push(walker.currentNode);
+        }
+
+        textNodes.forEach(function (textNode) {
+            if ((textNode.nodeValue || '').toLowerCase().indexOf(qLower) === -1) {
+                return;
+            }
+
+            var value = textNode.nodeValue || '';
+            var parent = textNode.parentNode;
+            if (!parent || parent.closest('.docx-hit, .xlsx-hit, style, script')) {
+                return;
+            }
+
+            var fragment = document.createDocumentFragment();
+            var cursor = 0;
+            var matchIndex = value.toLowerCase().indexOf(qLower);
+
+            while (matchIndex >= 0) {
+                if (matchIndex > cursor) {
+                    fragment.appendChild(document.createTextNode(value.slice(cursor, matchIndex)));
+                }
+
+                var mark = document.createElement('mark');
+                mark.className = 'docx-hit is-search-match';
+                mark.textContent = value.slice(matchIndex, matchIndex + qLower.length);
+                fragment.appendChild(mark);
+
+                cursor = matchIndex + qLower.length;
+                matchIndex = value.toLowerCase().indexOf(qLower, cursor);
+            }
+
+            if (cursor < value.length) {
+                fragment.appendChild(document.createTextNode(value.slice(cursor)));
+            }
+
+            parent.replaceChild(fragment, textNode);
+        });
+
+        pdfViewerElement.innerHTML = root.innerHTML;
+
+        var hits = Array.from(pdfViewerElement.querySelectorAll('.docx-hit.is-search-match'));
+        docxSearchState.hits = hits;
+        docxSearchState.currentIndex = hits.length ? 0 : -1;
+
+        if (!hits.length) {
+            return;
+        }
+
+        hits.forEach(function (hit) {
+            hit.classList.remove('is-search-first-match');
+        });
+
+        hits[0].classList.add('is-search-first-match');
+        focusDocxSearchHit(hits[0]);
+    }
+
+    function focusDocxSearchHit(hit) {
+        if (!hit || !pdfViewerElement || !isSelectedFileDocx()) {
+            return;
+        }
+
+        pdfViewerElement.querySelectorAll('.docx-hit.is-search-first-match').forEach(function (currentHit) {
+            currentHit.classList.remove('is-search-first-match');
+        });
+
+        hit.classList.add('is-search-first-match');
+
+        var scrollContainer = null;
+        if (pdfViewerContainer && pdfViewerContainer.scrollHeight > pdfViewerContainer.clientHeight) {
+            scrollContainer = pdfViewerContainer;
+        } else if (pdfViewerElement && pdfViewerElement.scrollHeight > pdfViewerElement.clientHeight) {
+            scrollContainer = pdfViewerElement;
+        }
+
+        if (scrollContainer && typeof hit.getBoundingClientRect === 'function') {
+            var hitRect = hit.getBoundingClientRect();
+            var containerRect = scrollContainer.getBoundingClientRect();
+            var targetScrollTop = scrollContainer.scrollTop + (hitRect.top - containerRect.top) - (containerRect.height * 0.35);
+
+            scrollContainer.scrollTo({
+                top: Math.max(0, targetScrollTop),
+                behavior: 'smooth'
+            });
+        } else if (typeof hit.scrollIntoView === 'function') {
+            hit.scrollIntoView({
+                block: 'nearest',
+                behavior: 'smooth'
+            });
+        }
+    }
+
+    function moveDocxSearchCursor(findPrevious) {
+        var hits = Array.from(pdfViewerElement.querySelectorAll('.docx-hit.is-search-match'));
+        if (!hits.length) {
+            docxSearchState.hits = [];
+            docxSearchState.currentIndex = -1;
+            return;
+        }
+
+        var currentHit = pdfViewerElement.querySelector('.docx-hit.is-search-first-match');
+        var activeIndex = currentHit ? hits.indexOf(currentHit) : docxSearchState.currentIndex;
+
+        if (activeIndex < 0 || activeIndex >= hits.length) {
+            activeIndex = findPrevious ? hits.length - 1 : 0;
+        } else {
+            activeIndex = (activeIndex + (findPrevious ? -1 : 1) + hits.length) % hits.length;
+        }
+
+        docxSearchState.hits = hits;
+        docxSearchState.currentIndex = activeIndex;
+        focusDocxSearchHit(hits[activeIndex]);
+    }
+
+    function applyDocxSearch(query) {
+        if (!pdfViewerElement || !pdfSearchInput || !isSelectedFileDocx()) {
+            return;
+        }
+
+        rebuildDocxSearchMatches(query);
     }
 
     function dispatchPdfSearch(
@@ -4858,7 +5068,18 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
                         applyXlsxSearch(query);
                     } else {
-                        applyDocxSearch(pdfSearchInput.value);
+                        var docxQuery = (pdfSearchInput.value || '').trim();
+                        if (!docxQuery) {
+                            clearDocxSearchHighlights();
+                            return;
+                        }
+
+                        if (type === 'again') {
+                            moveDocxSearchCursor(findPrevious);
+                            return;
+                        }
+
+                        applyDocxSearch(docxQuery);
                     }
                 }
                 return;
