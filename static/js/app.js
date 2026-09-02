@@ -142,6 +142,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         cellElement: null
     };
 
+    var xlsxZoomState = {
+        scale: 1
+    };
+
+    var xlsxSearchState = {
+        hits: [],
+        currentIndex: -1
+    };
+
     pdfPreviewState.selectedManualFindingId = null;
 
     // Drag and drop
@@ -431,12 +440,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
     function addManualFindingForCell(partName, cellRef, rawValue) {
         if (!isSelectedFileXlsx() || !documents[currentDocumentIndex]) {
-            return;
+            return null;
         }
 
         var value = (rawValue || '').trim();
         if (!value) {
-            return;
+            return null;
         }
 
         var manualFindings = getCurrentManualFindings();
@@ -447,11 +456,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         if (duplicate) {
             duplicate.enabled = true;
             renderPdfFindingsSidebar();
+            renderFindings(currentFindings);
             refreshXlsxManualHighlights();
-            return;
+            return duplicate;
         }
 
-        manualFindings.push({
+        var newFinding = {
             id: 'manual-' + Date.now() + '-' + Math.random().toString(16).slice(2),
             entity_type: 'MANUAL',
             marker: '[DODANE_RĘCZNIE]',
@@ -462,9 +472,46 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             xlsx_cell: cellRef,
             enabled: true,
             manual: true
-        });
+        };
+
+        manualFindings.push(newFinding);
 
         renderPdfFindingsSidebar();
+        renderFindings(currentFindings);
+        refreshXlsxManualHighlights();
+        return newFinding;
+    }
+
+    function removeManualFindingById(manualId) {
+        if (!manualId) {
+            return;
+        }
+
+        var manualFindings = getCurrentManualFindings();
+        var index = manualFindings.findIndex(function (entry) {
+            return String(entry.id) === String(manualId);
+        });
+
+        if (index < 0) {
+            return;
+        }
+
+        manualFindings.splice(index, 1);
+
+        if (pdfViewerElement && isSelectedFileXlsx()) {
+            pdfViewerElement.querySelectorAll('.xlsx-hit.xlsx-manual-hit').forEach(function (hit) {
+                if (String(hit.dataset.manualFindingId || '') === String(manualId)) {
+                    var cell = hit.closest('.xlsx-preview-cell');
+                    var originalValue = cell ? (cell.getAttribute('data-xlsx-value') || cell.textContent || '') : (hit.textContent || '');
+                    if (hit.parentNode) {
+                        hit.parentNode.replaceChild(document.createTextNode(String(originalValue)), hit);
+                    }
+                }
+            });
+        }
+
+        renderPdfFindingsSidebar();
+        renderFindings(currentFindings);
         refreshXlsxManualHighlights();
     }
 
@@ -665,6 +712,34 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         return mark;
     }
 
+    function renderManualFindingsSection() {
+        if (!documents[currentDocumentIndex] || !Array.isArray(documents[currentDocumentIndex].manualFindings)) {
+            return '';
+        }
+
+        var manualFindings = documents[currentDocumentIndex].manualFindings.filter(function (entry) {
+            return entry && entry.enabled !== false;
+        });
+
+        if (!manualFindings.length) {
+            return '';
+        }
+
+        var html = '<div class="manual-findings-section"><h3>Dodane ręcznie</h3><table class="findings-table manual-findings-table"><thead><tr><th>Wartość</th><th>Znacznik</th><th>Usuń</th><th>Pokaż</th></tr></thead><tbody>';
+
+        manualFindings.forEach(function (manualFinding) {
+            html += '<tr>';
+            html += '<td>' + escapeHtml(manualFinding.raw_value || '') + '</td>';
+            html += '<td>' + escapeHtml(manualFinding.marker || '[DODANE_RĘCZNIE]') + '</td>';
+            html += '<td><button type="button" style="margin: 0 auto;" class="btn btn-danger btn-sm manual-remove-main" data-manual-id="' + escapeHtml(String(manualFinding.id)) + '"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><!--!Font Awesome Free v7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2026 Fonticons, Inc.--><path d="M232.7 69.9L224 96L128 96C110.3 96 96 110.3 96 128C96 145.7 110.3 160 128 160L512 160C529.7 160 544 145.7 544 128C544 110.3 529.7 96 512 96L416 96L407.3 69.9C402.9 56.8 390.7 48 376.9 48L263.1 48C249.3 48 237.1 56.8 232.7 69.9zM512 208L128 208L149.1 531.1C150.7 556.4 171.7 576 197 576L443 576C468.3 576 489.3 556.4 490.9 531.1L512 208z"></path></svg> Usuń</button></td>';
+            html += '<td><button type="button" class="btn btn-secondary btn-sm manual-show-main" data-manual-id="' + escapeHtml(String(manualFinding.id)) + '"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><!--!Font Awesome Free v7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2026 Fonticons, Inc.--><path d="M320 144C254.8 144 201.2 173.6 160.1 211.7C121.6 247.5 95 290 81.4 320C95 350 121.6 392.5 160.1 428.3C201.2 466.4 254.8 496 320 496C385.2 496 438.8 466.4 479.9 428.3C518.4 392.5 545 350 558.6 320C545 290 518.4 247.5 479.9 211.7C438.8 173.6 385.2 144 320 144zM127.4 176.6C174.5 132.8 239.2 96 320 96C400.8 96 465.5 132.8 512.6 176.6C559.4 220.1 590.7 272 605.6 307.7C608.9 315.6 608.9 324.4 605.6 332.3C590.7 368 559.4 420 512.6 463.4C465.5 507.1 400.8 544 320 544C239.2 544 174.5 507.2 127.4 463.4C80.6 419.9 49.3 368 34.4 332.3C31.1 324.4 31.1 315.6 34.4 307.7C49.3 272 80.6 220 127.4 176.6zM320 400C364.2 400 400 364.2 400 320C400 290.4 383.9 264.5 360 250.7C358.6 310.4 310.4 358.6 250.7 360C264.5 383.9 290.4 400 320 400zM240.4 311.6C242.9 311.9 245.4 312 248 312C283.3 312 312 283.3 312 248C312 245.4 311.8 242.9 311.6 240.4C274.2 244.3 244.4 274.1 240.5 311.5zM286 196.6C296.8 193.6 308.2 192.1 319.9 192.1C328.7 192.1 337.4 193 345.7 194.7C346 194.8 346.2 194.8 346.5 194.9C404.4 207.1 447.9 258.6 447.9 320.1C447.9 390.8 390.6 448.1 319.9 448.1C258.3 448.1 206.9 404.6 194.7 346.7C192.9 338.1 191.9 329.2 191.9 320.1C191.9 309.1 193.3 298.3 195.9 288.1C196.1 287.4 196.2 286.8 196.4 286.2C208.3 242.8 242.5 208.6 285.9 196.7z"></path></svg> Pokaż</button></td>';
+            html += '</tr>';
+        });
+
+        html += '</tbody></table></div>';
+        return html;
+    }
+
     function renderFindings(findings) {
         currentFindings =
             findings || [];
@@ -716,6 +791,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             html += '</tr>';
         });
         html += '</tbody></table>';
+        html += renderManualFindingsSection();
 
         // Dodatkowy guzik "Podgląd całego dokumentu" jeśli to PDF
         html += '<div class="actions">';
@@ -807,6 +883,29 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         );
 
         // Event listener dla Zatwierdź
+        var manualMainShowButtons = findingsDiv.querySelectorAll('.manual-show-main');
+        manualMainShowButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                var manualId = button.getAttribute('data-manual-id');
+                var manualFinding = getCurrentManualFindings().find(function (entry) {
+                    return String(entry.id) === String(manualId);
+                });
+
+                if (!manualFinding) {
+                    return;
+                }
+
+                openDocxPreview(null, manualFinding.id);
+            });
+        });
+
+        var manualMainRemoveButtons = findingsDiv.querySelectorAll('.manual-remove-main');
+        manualMainRemoveButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                removeManualFindingById(button.getAttribute('data-manual-id'));
+            });
+        });
+
         var confirmBtn = document.getElementById('confirm-btn');
 
         if (confirmBtn) {
@@ -1299,7 +1398,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             loadedFile: null,
             ready: false,
             previewMode: 'detections',
-            initialScaleApplied: false
+            initialScaleApplied: false,
+            activeXlsxSheetName: null
         };
 
 
@@ -1852,7 +1952,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     // =========================================================
 
     async function openDocxPreview(
-        findingId
+        findingId,
+        manualFindingId
     ) {
         if (!isSelectedFileDocx() && !isSelectedFileXlsx()) {
             return;
@@ -1909,6 +2010,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     pdfViewerElement.innerHTML = xlsxPayload.html || '<div class="docx-preview-empty">Brak treści do podglądu.</div>';
                     pdfViewerElement.classList.add('docx-preview-container');
                     bindXlsxSheetTabs();
+                    applyActiveXlsxSheet(pdfPreviewState.activeXlsxSheetName || getActiveXlsxSheetName());
+                    applyXlsxZoom();
                     bindXlsxSelectionHandlers();
                     refreshXlsxManualHighlights();
                 } else {
@@ -1948,7 +2051,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
             renderPdfFindingsSidebar();
             refreshDocxPreviewState();
-            if (findingId) {
+
+            if (isXlsx && manualFindingId) {
+                focusManualXlsxFinding(manualFindingId);
+            } else if (findingId) {
                 focusDocxFinding(findingId);
             }
 
@@ -2189,6 +2295,52 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         });
     }
 
+    function getActiveXlsxSheetName() {
+        if (!pdfViewerElement || !isSelectedFileXlsx()) {
+            return pdfPreviewState.activeXlsxSheetName || null;
+        }
+
+        var activeTab = pdfViewerElement.querySelector('.xlsx-sheet-tab.is-active');
+        if (activeTab) {
+            return activeTab.getAttribute('data-sheet-name') || null;
+        }
+
+        var activePanel = pdfViewerElement.querySelector('.xlsx-sheet-panel.is-active');
+        if (activePanel) {
+            return activePanel.getAttribute('data-sheet-name') || null;
+        }
+
+        return pdfPreviewState.activeXlsxSheetName || null;
+    }
+
+    function applyActiveXlsxSheet(sheetName) {
+        if (!pdfViewerElement || !isSelectedFileXlsx()) {
+            return;
+        }
+
+        var targetSheet = sheetName || null;
+        pdfPreviewState.activeXlsxSheetName = targetSheet;
+
+        if (!targetSheet) {
+            var firstTab = pdfViewerElement.querySelector('.xlsx-sheet-tab');
+            if (firstTab) {
+                targetSheet = firstTab.getAttribute('data-sheet-name') || null;
+            }
+        }
+
+        if (!targetSheet) {
+            return;
+        }
+
+        pdfViewerElement.querySelectorAll('.xlsx-sheet-tab').forEach(function (tab) {
+            tab.classList.toggle('is-active', tab.getAttribute('data-sheet-name') === targetSheet);
+        });
+
+        pdfViewerElement.querySelectorAll('.xlsx-sheet-panel').forEach(function (panel) {
+            panel.classList.toggle('is-active', panel.getAttribute('data-sheet-name') === targetSheet);
+        });
+    }
+
     function bindXlsxSheetTabs() {
         if (!pdfViewerElement) {
             return;
@@ -2202,6 +2354,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         tabs.forEach(function (tab) {
             tab.addEventListener('click', function () {
                 var targetName = tab.getAttribute('data-sheet-name');
+                pdfPreviewState.activeXlsxSheetName = targetName || null;
 
                 pdfViewerElement.querySelectorAll('.xlsx-sheet-tab').forEach(function (item) {
                     item.classList.toggle('is-active', item === tab);
@@ -2220,14 +2373,20 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             return;
         }
 
-        addManualFindingForCell(
+        var manualFinding = addManualFindingForCell(
             xlsxSelectionState.part,
             xlsxSelectionState.cellRef,
             xlsxSelectionState.text
         );
 
         if (xlsxSelectionState.cellElement) {
-            wrapXlsxTextInMark(xlsxSelectionState.cellElement, xlsxSelectionState.text, 'xlsx-manual-hit');
+            wrapXlsxTextInMark(
+                xlsxSelectionState.cellElement,
+                xlsxSelectionState.text,
+                'xlsx-manual-hit',
+                manualFinding && manualFinding.id
+            );
+            refreshXlsxManualHighlights();
         }
 
         xlsxSelectionState = {
@@ -2327,6 +2486,19 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     return String(entry.id) === String(manualId);
                 }) : null;
 
+                if (!manualFinding) {
+                    if (hit.parentNode) {
+                        var staleValue = hit.textContent || '';
+                        var staleCell = hit.closest('.xlsx-preview-cell');
+                        if (staleCell) {
+                            staleValue = staleCell.getAttribute('data-xlsx-value') || staleCell.textContent || staleValue;
+                        }
+                        var textNode = document.createTextNode(String(staleValue));
+                        hit.parentNode.replaceChild(textNode, hit);
+                    }
+                    return;
+                }
+
                 var active = Boolean(manualFinding && manualFinding.enabled !== false);
                 hit.classList.toggle('is-output', active);
                 hit.classList.toggle('is-muted', !active);
@@ -2340,7 +2512,17 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     hit.classList.remove('is-selected');
                     hit.classList.remove('is-hidden');
                     hit.classList.add('is-muted');
-                    hit.textContent = String((manualFinding && (manualFinding.raw_value || manualFinding.rawValue || '')) || hit.textContent || '');
+
+                    var originalText = manualFinding
+                        ? (manualFinding.raw_value || manualFinding.rawValue || '')
+                        : '';
+
+                    if (!originalText) {
+                        var previewCell = hit.closest('.xlsx-preview-cell');
+                        originalText = previewCell ? (previewCell.getAttribute('data-xlsx-value') || previewCell.textContent || '') : (hit.textContent || '');
+                    }
+
+                    hit.textContent = String(originalText || hit.textContent || '');
                 }
             });
 
@@ -2945,10 +3127,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     html += '<span class="pdf-manual-label">' + escapeHtml(manualFinding.entity_type || 'Zaznaczenie') + '</span>';
                     html += '<span class="pdf-manual-value">' + escapeHtml(manualFinding.raw_value || '') + '</span>';
                     html += '</div>';
-                    html += '<div class="checkbox-wrapper-6">';
-                    html += '<input class="tgl tgl-light pdf-manual-toggle" id="manual-toggle-' + escapeHtml(String(manualId)) + '" type="checkbox" data-manual-id="' + escapeHtml(String(manualId)) + '"' + (manualFinding.enabled !== false ? ' checked' : '') + '>';
-                    html += '<label class="tgl-btn" for="manual-toggle-' + escapeHtml(String(manualId)) + '"></label>';
-                    html += '</div>';
                     html += '<button type="button" class="btn btn-danger btn-sm pdf-manual-remove" data-manual-id="' + escapeHtml(String(manualId)) + '">Usuń</button>';
                     html += '</div>';
                 });
@@ -3295,16 +3473,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         var manualRemoveButtons = pdfFindingsList.querySelectorAll('.pdf-manual-remove');
         manualRemoveButtons.forEach(function (button) {
             button.addEventListener('click', function () {
-                var manualId = button.getAttribute('data-manual-id');
-                var manualFindings = getCurrentManualFindings();
-                var index = manualFindings.findIndex(function (entry) {
-                    return String(entry.id) === String(manualId);
-                });
-                if (index >= 0) {
-                    manualFindings.splice(index, 1);
-                    renderPdfFindingsSidebar();
-                    refreshXlsxManualHighlights();
-                }
+                removeManualFindingById(button.getAttribute('data-manual-id'));
             });
         });
 
@@ -4239,31 +4408,34 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     // Zoom
     // =========================================================
 
-    function updatePdfZoomValue() {
-
-        if (
-            !pdfPreviewState.viewer
-            || !pdfZoomValue
-        ) {
+    function applyXlsxZoom() {
+        if (!pdfViewerElement || !isSelectedFileXlsx()) {
             return;
         }
 
+        var scale = Number(xlsxZoomState.scale) || 1;
+        scale = Math.min(Math.max(scale, 0.5), 2.5);
+        xlsxZoomState.scale = scale;
 
-        var scale =
-            pdfPreviewState
-                .viewer
-                .currentScale;
+        if (pdfViewerElement) {
+            pdfViewerElement.style.zoom = String(scale);
+            pdfViewerElement.style.transform = 'none';
+        }
+    }
 
+    function updatePdfZoomValue() {
+        if (!pdfZoomValue) {
+            return;
+        }
 
-        if (
-            scale
-            && isFinite(scale)
-        ) {
-            pdfZoomValue.textContent =
-                Math.round(
-                    scale * 100
-                )
-                + '%';
+        if (pdfPreviewState.viewer && pdfPreviewState.viewer.currentScale && isFinite(pdfPreviewState.viewer.currentScale)) {
+            var scale = pdfPreviewState.viewer.currentScale;
+            pdfZoomValue.textContent = Math.round(scale * 100) + '%';
+            return;
+        }
+
+        if (isSelectedFileXlsx()) {
+            pdfZoomValue.textContent = Math.round((Number(xlsxZoomState.scale) || 1) * 100) + '%';
         }
     }
 
@@ -4272,15 +4444,17 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         pdfZoomInBtn.addEventListener(
             'click',
             function () {
-
-                if (!pdfPreviewState.viewer) {
+                if (pdfPreviewState.viewer) {
+                    pdfPreviewState.viewer.currentScale *= 1.15;
+                    updatePdfZoomValue();
                     return;
                 }
 
-                pdfPreviewState
-                    .viewer
-                    .currentScale *=
-                    1.15;
+                if (isSelectedFileXlsx()) {
+                    xlsxZoomState.scale = Number((Number(xlsxZoomState.scale) || 1) * 1.15);
+                    applyXlsxZoom();
+                    updatePdfZoomValue();
+                }
             }
         );
     }
@@ -4290,15 +4464,17 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         pdfZoomOutBtn.addEventListener(
             'click',
             function () {
-
-                if (!pdfPreviewState.viewer) {
+                if (pdfPreviewState.viewer) {
+                    pdfPreviewState.viewer.currentScale /= 1.15;
+                    updatePdfZoomValue();
                     return;
                 }
 
-                pdfPreviewState
-                    .viewer
-                    .currentScale /=
-                    1.15;
+                if (isSelectedFileXlsx()) {
+                    xlsxZoomState.scale = Number((Number(xlsxZoomState.scale) || 1) / 1.15);
+                    applyXlsxZoom();
+                    updatePdfZoomValue();
+                }
             }
         );
     }
@@ -4308,15 +4484,17 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         pdfZoomFitBtn.addEventListener(
             'click',
             function () {
-
-                if (!pdfPreviewState.viewer) {
+                if (pdfPreviewState.viewer) {
+                    pdfPreviewState.viewer.currentScaleValue = 'page-width';
+                    updatePdfZoomValue();
                     return;
                 }
 
-                pdfPreviewState
-                    .viewer
-                    .currentScaleValue =
-                    'page-width';
+                if (isSelectedFileXlsx()) {
+                    xlsxZoomState.scale = 1;
+                    applyXlsxZoom();
+                    updatePdfZoomValue();
+                }
             }
         );
     }
@@ -4329,6 +4507,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     function setPreviewMode(
         mode
     ) {
+
+        if (isSelectedFileXlsx()) {
+            pdfPreviewState.activeXlsxSheetName = getActiveXlsxSheetName();
+        }
 
         pdfPreviewState.previewMode =
             mode === 'output'
@@ -4363,11 +4545,23 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
         if (isSelectedFileDocx() || isSelectedFileXlsx()) {
             if (modalIsOpen) {
+                var currentSheet = isSelectedFileXlsx() ? getActiveXlsxSheetName() : null;
                 openDocxPreview(
                     pdfPreviewState.selectedFindingId
                 );
+                if (isSelectedFileXlsx() && currentSheet) {
+                    requestAnimationFrame(function () {
+                        applyActiveXlsxSheet(currentSheet);
+                    });
+                }
             } else {
+                var currentSheetBeforeRefresh = isSelectedFileXlsx() ? getActiveXlsxSheetName() : null;
                 refreshDocxPreviewState();
+                if (isSelectedFileXlsx() && currentSheetBeforeRefresh) {
+                    requestAnimationFrame(function () {
+                        applyActiveXlsxSheet(currentSheetBeforeRefresh);
+                    });
+                }
             }
             return;
         }
@@ -4410,6 +4604,215 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     // Wyszukiwanie
     // =========================================================
 
+    function mergeAdjacentTextNodes(parent) {
+        if (!parent || !parent.childNodes) {
+            return;
+        }
+
+        var previousTextNode = null;
+        var children = Array.prototype.slice.call(parent.childNodes);
+
+        children.forEach(function (child) {
+            if (child.nodeType === Node.TEXT_NODE) {
+                if (previousTextNode) {
+                    previousTextNode.textContent += child.textContent || '';
+                    parent.removeChild(child);
+                    return;
+                }
+                previousTextNode = child;
+                return;
+            }
+
+            previousTextNode = null;
+        });
+    }
+
+    function clearXlsxSearchHighlights() {
+        if (!pdfViewerElement || !isSelectedFileXlsx()) {
+            return;
+        }
+
+        pdfViewerElement.querySelectorAll('.xlsx-hit.is-search-match, .xlsx-hit.is-search-first-match').forEach(function (hit) {
+            if (!hit.parentNode) {
+                return;
+            }
+
+            var textNode = document.createTextNode(hit.textContent || '');
+            hit.parentNode.replaceChild(textNode, hit);
+        });
+
+        pdfViewerElement.querySelectorAll('.xlsx-preview-cell').forEach(function (cell) {
+            mergeAdjacentTextNodes(cell);
+        });
+    }
+
+    function getXlsxSearchHitList() {
+        if (!pdfViewerElement || !isSelectedFileXlsx()) {
+            return [];
+        }
+
+        var hits = [];
+        pdfViewerElement.querySelectorAll('.xlsx-sheet-panel').forEach(function (sheetPanel) {
+            sheetPanel.querySelectorAll('.xlsx-hit.is-search-match').forEach(function (hit) {
+                hits.push(hit);
+            });
+        });
+
+        return hits;
+    }
+
+    function focusXlsxSearchHit(hit) {
+        if (!hit || !pdfViewerElement || !isSelectedFileXlsx()) {
+            return;
+        }
+
+        pdfViewerElement.querySelectorAll('.xlsx-hit.is-search-match').forEach(function (currentHit) {
+            currentHit.classList.remove('is-search-first-match');
+        });
+
+        hit.classList.add('is-search-first-match');
+        activateXlsxSheetForHit(hit);
+
+        if (pdfViewerContainer && typeof hit.getBoundingClientRect === 'function') {
+            var hitRect = hit.getBoundingClientRect();
+            var containerRect = pdfViewerContainer.getBoundingClientRect();
+            var targetScrollTop = pdfViewerContainer.scrollTop + (hitRect.top - containerRect.top) - (containerRect.height * 0.35);
+
+            pdfViewerContainer.scrollTo({
+                top: Math.max(0, targetScrollTop),
+                behavior: 'smooth'
+            });
+        } else if (typeof hit.scrollIntoView === 'function') {
+            hit.scrollIntoView({
+                block: 'nearest',
+                behavior: 'smooth'
+            });
+        }
+    }
+
+    function moveXlsxSearchCursor(findPrevious) {
+        var hits = getXlsxSearchHitList();
+        if (!hits.length) {
+            xlsxSearchState.hits = [];
+            xlsxSearchState.currentIndex = -1;
+            return;
+        }
+
+        var currentHit = pdfViewerElement.querySelector('.xlsx-hit.is-search-first-match');
+        var activeIndex = currentHit ? hits.indexOf(currentHit) : xlsxSearchState.currentIndex;
+
+        if (activeIndex < 0 || activeIndex >= hits.length) {
+            activeIndex = findPrevious ? hits.length - 1 : 0;
+        } else {
+            activeIndex = (activeIndex + (findPrevious ? -1 : 1) + hits.length) % hits.length;
+        }
+
+        xlsxSearchState.hits = hits;
+        xlsxSearchState.currentIndex = activeIndex;
+        focusXlsxSearchHit(hits[activeIndex]);
+    }
+
+    function wrapXlsxTextNodeMatches(node, query) {
+        if (!node || !query) {
+            return;
+        }
+
+        var value = node.nodeValue || '';
+        var lowerValue = value.toLowerCase();
+        var queryLower = String(query).toLowerCase();
+        if (!queryLower) {
+            return;
+        }
+
+        var matchIndex = lowerValue.indexOf(queryLower);
+        if (matchIndex < 0) {
+            return;
+        }
+
+        var parent = node.parentNode;
+        if (!parent || parent.closest('.xlsx-hit')) {
+            return;
+        }
+
+        var cursor = 0;
+        var fragment = document.createDocumentFragment();
+
+        while (matchIndex >= 0) {
+            if (matchIndex > cursor) {
+                fragment.appendChild(document.createTextNode(value.slice(cursor, matchIndex)));
+            }
+
+            var mark = document.createElement('mark');
+            mark.className = 'xlsx-hit is-search-match';
+            mark.textContent = value.slice(matchIndex, matchIndex + queryLower.length);
+            fragment.appendChild(mark);
+
+            cursor = matchIndex + queryLower.length;
+            matchIndex = lowerValue.indexOf(queryLower, cursor);
+        }
+
+        if (cursor < value.length) {
+            fragment.appendChild(document.createTextNode(value.slice(cursor)));
+        }
+
+        parent.replaceChild(fragment, node);
+    }
+
+    function applyXlsxSearch(query) {
+        if (!pdfViewerElement || !isSelectedFileXlsx()) {
+            return;
+        }
+
+        clearXlsxSearchHighlights();
+
+        var q = (query || '').trim();
+        if (!q) {
+            return;
+        }
+
+        var qLower = q.toLowerCase();
+
+        pdfViewerElement.querySelectorAll('.xlsx-preview-cell').forEach(function (cell) {
+            var walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, function (textNode) {
+                var parent = textNode.parentElement;
+                if (!parent || parent.closest('.xlsx-hit')) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                return NodeFilter.FILTER_ACCEPT;
+            });
+
+            var textNodes = [];
+            while (walker.nextNode()) {
+                textNodes.push(walker.currentNode);
+            }
+
+            textNodes.forEach(function (textNode) {
+                if ((textNode.nodeValue || '').toLowerCase().indexOf(qLower) !== -1) {
+                    wrapXlsxTextNodeMatches(textNode, qLower);
+                }
+            });
+
+            mergeAdjacentTextNodes(cell);
+        });
+
+        pdfViewerElement.querySelectorAll('.xlsx-sheet-panel').forEach(function (sheetPanel) {
+            var firstHit = sheetPanel.querySelector('.xlsx-hit.is-search-match');
+            if (!firstHit) {
+                return;
+            }
+
+            firstHit.classList.add('is-search-first-match');
+        });
+
+        var allHits = getXlsxSearchHitList();
+        xlsxSearchState.hits = allHits;
+        xlsxSearchState.currentIndex = allHits.length ? 0 : -1;
+
+        if (allHits.length) {
+            focusXlsxSearchHit(allHits[0]);
+        }
+    }
+
     function applyDocxSearch(query) {
         if (!pdfViewerElement || !pdfSearchInput) {
             return;
@@ -4439,7 +4842,24 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
         if (isSelectedFileDocx() || isSelectedFileXlsx()) {
                 if (pdfSearchInput) {
-                    applyDocxSearch(pdfSearchInput.value);
+                    if (isSelectedFileXlsx()) {
+                        var query = (pdfSearchInput.value || '').trim();
+                        if (!query) {
+                            clearXlsxSearchHighlights();
+                            xlsxSearchState.hits = [];
+                            xlsxSearchState.currentIndex = -1;
+                            return;
+                        }
+
+                        if (type === 'again') {
+                            moveXlsxSearchCursor(findPrevious);
+                            return;
+                        }
+
+                        applyXlsxSearch(query);
+                    } else {
+                        applyDocxSearch(pdfSearchInput.value);
+                    }
                 }
                 return;
             }
