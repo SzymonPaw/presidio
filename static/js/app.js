@@ -23,6 +23,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     var fileInfo = document.getElementById('file-info');
     var documentList = document.getElementById('document-list');
     var analyzeBtn = document.getElementById('analyze-btn');
+    var downloadAllBtn = document.getElementById('download-all-btn');
     var statusDiv = document.getElementById('status');
     var findingsDiv = document.getElementById('findings');
 
@@ -282,6 +283,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     function renderDocumentList() {
         if (!documentList) return;
 
+        if (downloadAllBtn) {
+            downloadAllBtn.disabled = !documents.some(function (item) {
+                return item.analyzed;
+            });
+        }
+
         documentList.innerHTML = documents.map(function (item, index) {
             var activeClass = index === currentDocumentIndex ? ' is-active' : '';
             var downloadDisabled = item.analyzed ? '' : ' disabled';
@@ -381,6 +388,82 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     }
 
+    function getManualFindingsForRequest(documentItem) {
+        return (documentItem.manualFindings || []).filter(function (item) {
+            return item.enabled !== false;
+        }).map(function (item) {
+            return {
+                entity_type: item.entity_type || 'MANUAL',
+                marker: item.marker || '[DODANE_RĘCZNIE]',
+                raw_value: item.raw_value || '',
+                score: item.score || 1,
+                reason: item.reason || 'Dodane ręcznie',
+                xlsx_part: item.xlsx_part,
+                xlsx_cell: item.xlsx_cell
+            };
+        });
+    }
+
+    function downloadBlob(blob, filename) {
+        var url = URL.createObjectURL(blob);
+        var anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+    }
+
+    if (downloadAllBtn) {
+        downloadAllBtn.addEventListener('click', function () {
+            var readyDocuments = documents.filter(function (item) {
+                return item.analyzed;
+            });
+            if (!readyDocuments.length) {
+                return;
+            }
+
+            persistCurrentFindingsState();
+            downloadAllBtn.disabled = true;
+            statusDiv.textContent = 'Przygotowywanie archiwum ZIP...';
+
+            var formData = new FormData();
+            var settings = readyDocuments.map(function (item, index) {
+                formData.append('files', item.file, item.file.name);
+                return {
+                    index: index,
+                    confirmed_ids: (item.findings || []).filter(function (finding) {
+                        return finding.enabled !== false;
+                    }).map(function (finding) { return String(finding.id); }),
+                    manual_findings: getManualFindingsForRequest(item)
+                };
+            });
+            formData.append('settings', JSON.stringify(settings));
+
+            fetch('/anonymize-all', { method: 'POST', body: formData })
+                .then(function (response) {
+                    if (!response.ok) {
+                        throw new Error('Nie udało się przygotować archiwum ZIP.');
+                    }
+                    return response.blob();
+                })
+                .then(function (blob) {
+                    downloadBlob(blob, 'anonimizacje.zip');
+                    readyDocuments.forEach(function (item) { item.status = 'Pobrany'; });
+                    renderDocumentList();
+                    statusDiv.textContent = 'Anonimizacja zakończona. Pliki zostały pobrane.';
+                })
+                .catch(function (error) {
+                    statusDiv.textContent = 'Błąd podczas przygotowywania archiwum ZIP.';
+                    console.error(error);
+                })
+                .finally(function () {
+                    downloadAllBtn.disabled = false;
+                });
+        });
+    }
+
     if (form) {
         form.addEventListener('submit', function (e) {
             e.preventDefault();
@@ -404,6 +487,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                             document.status = 'Gotowy';
                         })
                         .catch(function (error) {
+
                             document.status = 'Błąd analizy';
                             console.error(error);
                         });

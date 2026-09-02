@@ -915,12 +915,6 @@ class XlsxAdapter:
                 if replacement not in unlocated_replacements:
                     unlocated_replacements.append(replacement)
 
-                #logger.warning(
-                #    "Finding XLSX bez lokalizacji; "
-                #    "zostanie odnaleziony ponownie po raw_value: %s",
-                #    finding.get("entity_type", "?"),
-                #)
-
         # ----------------------------------------------------
         # 2. Fallback - odnajdz zatwierdzone wartosci w komorkach.
         # ----------------------------------------------------
@@ -1091,11 +1085,6 @@ class XlsxAdapter:
                 encoding="UTF-8",
                 xml_declaration=True,
             )
-
-        logger.warning(
-            "Anonimizacja XLSX: zmodyfikowano %d czesci OOXML.",
-            len(modifications),
-        )
 
         return rewrite_ooxml_package(
             xlsx_bytes,

@@ -167,6 +167,7 @@ def _register_routes(app: Flask) -> None:
     """Rejestruje podstawowe trasy."""
     import json
     import io
+    import zipfile
     from flask import render_template, send_file, request, jsonify
 
     from src.documents.pdf_adapter import PdfAdapter
@@ -590,6 +591,91 @@ def _register_routes(app: Flask) -> None:
             
         except Exception as exc:
             return jsonify({"error": f"Blad podczas anonimizacji: {str(exc)}"}), 500
+
+    @app.route("/anonymize-all", methods=["POST"])
+    def anonymize_all():
+        """Anonimizuje wszystkie pliki i zwraca je w jednym archiwum ZIP."""
+        files = request.files.getlist("files")
+        if not files:
+            return jsonify({"error": "Brak plikow"}), 400
+
+        try:
+            settings_raw = request.form.get("settings", "[]")
+            settings = json.loads(settings_raw)
+            if not isinstance(settings, list):
+                raise ValueError("Niepoprawny format ustawien")
+
+            settings_by_index = {
+                str(item.get("index")): item
+                for item in settings
+                if isinstance(item, dict)
+            }
+            archive_io = io.BytesIO()
+
+            with zipfile.ZipFile(archive_io, "w", zipfile.ZIP_DEFLATED) as archive:
+                used_names = set()
+                for index, file in enumerate(files):
+                    filename = Path(file.filename or f"plik_{index + 1}").name
+                    if not filename:
+                        filename = f"plik_{index + 1}"
+
+                    item_settings = settings_by_index.get(str(index), {})
+                    confirmed_ids = {
+                        str(value)
+                        for value in item_settings.get("confirmed_ids", [])
+                    }
+                    manual_findings = item_settings.get("manual_findings", [])
+                    file_bytes = file.read()
+                    findings = _get_findings_for_file(file_bytes, filename)
+                    confirmed_findings = [
+                        finding for finding in findings
+                        if str(finding.get("id")) in confirmed_ids
+                    ]
+
+                    for item in manual_findings:
+                        if not isinstance(item, dict):
+                            continue
+                        raw_value = str(item.get("raw_value", "")).strip()
+                        if raw_value:
+                            confirmed_findings.append({
+                                "entity_type": item.get("entity_type", "MANUAL"),
+                                "marker": item.get("marker", "[DODANE_RĘCZNIE]"),
+                                "raw_value": raw_value,
+                                "score": float(item.get("score", 1.0)),
+                                "reason": item.get("reason", "Dodane ręcznie"),
+                                "xlsx_part": item.get("xlsx_part"),
+                                "xlsx_cell": item.get("xlsx_cell"),
+                            })
+
+                    if filename.lower().endswith(".pdf"):
+                        output = pdf_adapter.anonymize(file_bytes, confirmed_findings)
+                    elif filename.lower().endswith(".docx"):
+                        output = docx_adapter.anonymize(file_bytes, confirmed_findings)
+                    elif filename.lower().endswith(".xlsx"):
+                        output = xlsx_adapter.anonymize(file_bytes, confirmed_findings)
+                    else:
+                        raise ValueError(f"Nieobslugiwany format pliku: {filename}")
+
+                    output = sanitize_document_metadata(output, filename)
+                    output_name = _build_anonymized_filename(filename)
+                    suffix = Path(output_name).suffix
+                    unique_name = f"{Path(output_name).stem}_{index + 1}{suffix}"
+                    counter = 2
+                    while unique_name in used_names:
+                        unique_name = f"{Path(output_name).stem}_{index + 1}_{counter}{suffix}"
+                        counter += 1
+                    used_names.add(unique_name)
+                    archive.writestr(unique_name, output)
+
+            archive_io.seek(0)
+            return send_file(
+                archive_io,
+                mimetype="application/zip",
+                as_attachment=True,
+                download_name="anonimizacje.zip",
+            )
+        except Exception as exc:
+            return jsonify({"error": f"Blad podczas anonimizacji plikow: {str(exc)}"}), 500
 
 # ---------------------------------------------------------------------------
 # Punkt wejsciowy dla opcjonalnego uruchomienia bezposredniego

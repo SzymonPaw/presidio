@@ -116,14 +116,16 @@ h1 {
     color: #555;
 }
 
-#analyze-btn {
+#analyze-btn,
+#download-all-btn {
     justify-content: center;
     align-items: center;
     display: flex;
     gap: 7px;
 }
 
-#analyze-btn svg {
+#analyze-btn svg,
+#download-all-btn svg {
     width: 24px;
     height: 24px;
     fill: #ffffff;
