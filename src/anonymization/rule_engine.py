@@ -7,6 +7,7 @@ Wszystkie recognizery są oparte wyłącznie na:
 - jawnych słowach kontekstowych analizowanych w oknie lines
 """
 import csv
+import json
 import re
 from pathlib import Path
 from typing import List, Set
@@ -29,7 +30,7 @@ from src.anonymization.validators import (
     validate_iban,
     validate_id_card,
 )
-from src.settings import RECOGNIZERS_DIR
+from src.settings import RECOGNIZERS_DIR, DATA_DIR
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +98,32 @@ def _load_allowlist() -> Set[str]:
     except Exception:
         pass
     return allowlist
+
+
+def _normalize_exclusion_value(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(value).lower())
+
+
+def _load_pkd_exclusions() -> Set[str]:
+    path = DATA_DIR / "source" / "pkd.json"
+    exclusions = set()
+    if not path.exists():
+        return exclusions
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        if not isinstance(payload, list):
+            return exclusions
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            code = item.get("code", "")
+            normalized = _normalize_exclusion_value(code)
+            if normalized:
+                exclusions.add(normalized)
+    except Exception:
+        pass
+    return exclusions
 
 
 def _load_custom_rules(filename: str) -> list:
@@ -521,6 +548,11 @@ class LicensePlateRecognizer(EntityRecognizer):
 # 9. Recognizer Polis i Szkód (Reguły dynamiczne)
 # ---------------------------------------------------------------------------
 class PolicyClaimRecognizer(EntityRecognizer):
+    _BLOCKED_VALUES = {
+        "covid19",
+        "covid",
+    }
+
     def __init__(self):
         super().__init__(
             supported_entities=["POLICY_NUMBER", "CLAIM_NUMBER"],
@@ -530,15 +562,25 @@ class PolicyClaimRecognizer(EntityRecognizer):
         self.policy_rules = _load_custom_rules("policy_numbers.yml")
         self.claim_rules = _load_custom_rules("claim_numbers.yml")
 
+    def _is_blocked_match(self, value: str) -> bool:
+        normalized = re.sub(r"[^a-z0-9]", "", value.lower())
+        return normalized in self._BLOCKED_VALUES
+
     def analyze(self, text: str, entities: List[str], nlp_artifacts=None):
         results = []
         for compiled_re in self.policy_rules:
             for m in compiled_re.finditer(text):
+                raw_value = m.group(1) if compiled_re.groups >= 1 else m.group(0)
+                if self._is_blocked_match(raw_value):
+                    continue
                 gstart = m.start(1) if compiled_re.groups >= 1 else m.start()
                 gend = m.end(1) if compiled_re.groups >= 1 else m.end()
                 results.append(RecognizerResult("POLICY_NUMBER", gstart, gend, 0.90))
         for compiled_re in self.claim_rules:
             for m in compiled_re.finditer(text):
+                raw_value = m.group(1) if compiled_re.groups >= 1 else m.group(0)
+                if self._is_blocked_match(raw_value):
+                    continue
                 gstart = m.start(1) if compiled_re.groups >= 1 else m.start()
                 gend = m.end(1) if compiled_re.groups >= 1 else m.end()
                 results.append(RecognizerResult("CLAIM_NUMBER", gstart, gend, 0.90))
@@ -631,28 +673,32 @@ class OrganizationRecognizer(EntityRecognizer):
 
         self.legal_forms = _load_legal_forms()
 
+        self._normalized_legal_forms = []
+        for form in self.legal_forms:
+            normalized = re.sub(r"[^a-zA-Z0-9]", "", form).lower()
+            if normalized and normalized not in self._normalized_legal_forms:
+                self._normalized_legal_forms.append(normalized)
+
         sorted_forms = sorted(
             self.legal_forms,
-            key=len,
+            key=lambda item: len(re.sub(r"[^a-zA-Z0-9]", "", item)),
             reverse=True,
         )
 
         escaped_forms = []
         for form in sorted_forms:
-            pattern = re.escape(form)
-            pattern = pattern.replace(
-                r"\ ",
-                r"[ \t\r\n]*",
-            )
-            pattern = pattern.replace(
-                r"\.",
-                r"\.?",
-            )
-            escaped_forms.append(pattern)
+            tokens = re.findall(r"[A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż0-9]+", form)
+            if not tokens:
+                continue
 
-        forms_pattern = "|".join(
-            escaped_forms
-        )
+            pattern_tokens = []
+            for index, token in enumerate(tokens):
+                if index > 0:
+                    pattern_tokens.append(r"(?:[ \t\r\n]*[\.-]?[ \t\r\n]*)")
+                pattern_tokens.append(re.escape(token))
+            escaped_forms.append("".join(pattern_tokens))
+
+        forms_pattern = "|".join(escaped_forms)
 
         if not forms_pattern:
             self._form_pattern = None
@@ -685,18 +731,50 @@ class OrganizationRecognizer(EntityRecognizer):
             re.IGNORECASE,
         )
 
+        self._reverse_form_pattern = re.compile(
+            rf"(?<![{self._LETTER_CHARS}0-9])"
+
+            rf"("
+            rf"{forms_pattern}"
+            rf")"
+
+            rf"[ \t\r\n]+"
+
+            rf"("
+            rf"['\"“”]?"
+            rf"[{self._LETTER_CHARS}0-9]"
+            rf"[{self._NAME_CHARS} \t]{{0,120}}"
+            rf"['\"“”]?"
+            rf")"
+
+            rf"(?![{self._LETTER_CHARS}0-9])",
+
+            re.IGNORECASE,
+        )
+
+    def _normalize_company_name(self, value: str) -> str:
+        return re.sub(r"[^a-zA-Z0-9]", "", value).lower()
+
     def _looks_like_real_company_name(self, candidate: str) -> bool:
         candidate = candidate.strip()
         if not candidate:
             return False
 
-        if len(candidate) < 4:
-            return False
-
         tokens = re.split(r"[\s\r\n]+", candidate)
         tokens = [token.strip(" ,;:-\"“”()") for token in tokens if token.strip()]
 
-        if len(tokens) < 2 or len(tokens) > 12:
+        if not tokens or len(tokens) > 12:
+            return False
+
+        if len(tokens) == 1:
+            token = tokens[0].strip("'\"“”")
+            if len(token) < 2:
+                return False
+            if token.isupper() or any(ch.isdigit() for ch in token):
+                return True
+            return False
+
+        if len(candidate) < 4:
             return False
 
         normalized = [token.lower() for token in tokens]
@@ -713,6 +791,10 @@ class OrganizationRecognizer(EntityRecognizer):
         if re.search(r"(?i)\b(?:w|z|o|na|po|za|do|od|przy|bez|lub|czy|i|oraz)\b", candidate):
             if len(tokens) <= 2:
                 return False
+
+        normalized_candidate = self._normalize_company_name(candidate)
+        if normalized_candidate and any(self._normalize_company_name(form) == normalized_candidate for form in self.legal_forms):
+            return False
 
         return True
 
@@ -731,7 +813,14 @@ class OrganizationRecognizer(EntityRecognizer):
             text
         ):
             candidate = match.group(1).strip()
+            legal_form = match.group(2).strip()
+            if not candidate or not legal_form:
+                continue
             if not self._looks_like_real_company_name(candidate):
+                continue
+
+            normalized_form = self._normalize_company_name(legal_form)
+            if normalized_form and normalized_form not in self._normalized_legal_forms:
                 continue
 
             results.append(
@@ -740,6 +829,29 @@ class OrganizationRecognizer(EntityRecognizer):
                     match.start(),
                     match.end(),
                     0.92,
+                )
+            )
+
+        for match in self._reverse_form_pattern.finditer(
+            text
+        ):
+            legal_form = match.group(1).strip()
+            candidate = match.group(2).strip()
+            if not candidate or not legal_form:
+                continue
+            if not self._looks_like_real_company_name(candidate):
+                continue
+
+            normalized_form = self._normalize_company_name(legal_form)
+            if normalized_form and normalized_form not in self._normalized_legal_forms:
+                continue
+
+            results.append(
+                RecognizerResult(
+                    "ORGANIZATION",
+                    match.start(),
+                    match.end(),
+                    0.95,
                 )
             )
 
@@ -1542,6 +1654,7 @@ class DeterministicAnalyzer:
             supported_languages=["pl"],
         )
         self.allowlist = _load_allowlist()
+        self.pkd_exclusions = _load_pkd_exclusions()
 
     def _register_recognizers(self):
         for rec in [
@@ -1575,6 +1688,8 @@ class DeterministicAnalyzer:
         for r in results:
             val = text[r.start:r.end].strip().lower()
             if val in self.allowlist:
+                continue
+            if _normalize_exclusion_value(val) in self.pkd_exclusions:
                 continue
             filtered_results.append(r)
 

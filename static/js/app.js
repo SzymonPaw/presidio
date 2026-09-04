@@ -295,9 +295,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             var previewDisabled = item.analyzed ? '' : ' disabled';
             return '<div class="document-item' + activeClass + '">'
                 + '<button type="button" class="document-select" data-document-index="' + index + '">'
-                + escapeHtml(item.file.name)
-                + ' <span>(' + escapeHtml(getFileType(item.file.name)) + ')</span>'
-                + '<small>' + escapeHtml(item.status) + '</small>'
+                + '<img src="/static/img/' + escapeHtml(getFileType(item.file.name)) + '.jpg" alt="Ikona pliku" class="file-icon">'
+                + '<br>' + escapeHtml(item.file.name)
+                + ' <small>' + escapeHtml(item.status) + '</small>'
                 + '</button>'
                 + '<button type="button" class="btn btn-danger btn-sm document-remove" data-document-index="' + index + '"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><!--!Font Awesome Free v7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2026 Fonticons, Inc.--><path d="M232.7 69.9L224 96L128 96C110.3 96 96 110.3 96 128C96 145.7 110.3 160 128 160L512 160C529.7 160 544 145.7 544 128C544 110.3 529.7 96 512 96L416 96L407.3 69.9C402.9 56.8 390.7 48 376.9 48L263.1 48C249.3 48 237.1 56.8 232.7 69.9zM512 208L128 208L149.1 531.1C150.7 556.4 171.7 576 197 576L443 576C468.3 576 489.3 556.4 490.9 531.1L512 208z"/></svg> Usuń</button>'
                 + '<button type="button" class="btn btn-secondary btn-sm document-preview" data-document-index="' + index + '"' + previewDisabled + '><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><!--!Font Awesome Free v7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2026 Fonticons, Inc.--><path d="M320 144C254.8 144 201.2 173.6 160.1 211.7C121.6 247.5 95 290 81.4 320C95 350 121.6 392.5 160.1 428.3C201.2 466.4 254.8 496 320 496C385.2 496 438.8 466.4 479.9 428.3C518.4 392.5 545 350 558.6 320C545 290 518.4 247.5 479.9 211.7C438.8 173.6 385.2 144 320 144zM127.4 176.6C174.5 132.8 239.2 96 320 96C400.8 96 465.5 132.8 512.6 176.6C559.4 220.1 590.7 272 605.6 307.7C608.9 315.6 608.9 324.4 605.6 332.3C590.7 368 559.4 420 512.6 463.4C465.5 507.1 400.8 544 320 544C239.2 544 174.5 507.2 127.4 463.4C80.6 419.9 49.3 368 34.4 332.3C31.1 324.4 31.1 315.6 34.4 307.7C49.3 272 80.6 220 127.4 176.6zM320 400C364.2 400 400 364.2 400 320C400 290.4 383.9 264.5 360 250.7C358.6 310.4 310.4 358.6 250.7 360C264.5 383.9 290.4 400 320 400zM240.4 311.6C242.9 311.9 245.4 312 248 312C283.3 312 312 283.3 312 248C312 245.4 311.8 242.9 311.6 240.4C274.2 244.3 244.4 274.1 240.5 311.5zM286 196.6C296.8 193.6 308.2 192.1 319.9 192.1C328.7 192.1 337.4 193 345.7 194.7C346 194.8 346.2 194.8 346.5 194.9C404.4 207.1 447.9 258.6 447.9 320.1C447.9 390.8 390.6 448.1 319.9 448.1C258.3 448.1 206.9 404.6 194.7 346.7C192.9 338.1 191.9 329.2 191.9 320.1C191.9 309.1 193.3 298.3 195.9 288.1C196.1 287.4 196.2 286.8 196.4 286.2C208.3 242.8 242.5 208.6 285.9 196.7z"/></svg> Podgląd</button>'
@@ -893,6 +893,34 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         return html;
     }
 
+    function toggleCurrentFindingsSelection() {
+        var checkboxes = findingsDiv.querySelectorAll('input[name="anonymize"]');
+        if (!checkboxes.length) {
+            return;
+        }
+
+        var allChecked = Array.prototype.every.call(checkboxes, function (checkbox) {
+            return checkbox.checked;
+        });
+
+        var nextValue = !allChecked;
+
+        checkboxes.forEach(function (checkbox) {
+            checkbox.checked = nextValue;
+            var finding = getFindingById(checkbox.value);
+            if (finding) {
+                finding.enabled = nextValue;
+            }
+        });
+
+        renderPdfFindingsSidebar();
+        if (isSelectedFileDocx() || isSelectedFileXlsx()) {
+            refreshDocxPreviewState();
+        } else {
+            refreshPdfOverlayState();
+        }
+    }
+
     function renderFindings(findings) {
         currentFindings =
             findings || [];
@@ -913,7 +941,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             /\.xlsx$/i.test(selectedFile.name);
 
         var html = noFindingsMessage + '<h2>Wykryte dane</h2>';
-        html += '<table class="findings-table"><thead><tr><th>Typ</th><th>Znacznik</th><th>Pokrycie</th><th>Wystąpienia</th><th>Anonimizuj</th>';
+        html += '<table class="findings-table"><thead><tr><th>Typ</th><th>Znacznik</th><th>Wystąpienia</th><th>Anonimizuj <button type="button" class="toggle-all-findings-btn" aria-label="Przełącz wszystkie pola" title="Przełącz wszystkie pola" data-wenk="Przełącz wszystkie pola" data-wenk-pos="top"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><!--!Font Awesome Free v7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2026 Fonticons, Inc.--><path d="M566.6 214.6L470.6 310.6C461.4 319.8 447.7 322.5 435.7 317.5C423.7 312.5 416 300.9 416 288L416 224L96 224C78.3 224 64 209.7 64 192C64 174.3 78.3 160 96 160L416 160L416 96C416 83.1 423.8 71.4 435.8 66.4C447.8 61.4 461.5 64.2 470.7 73.3L566.7 169.3C579.2 181.8 579.2 202.1 566.7 214.6zM169.3 566.6L73.3 470.6C60.8 458.1 60.8 437.8 73.3 425.3L169.3 329.3C178.5 320.1 192.2 317.4 204.2 322.4C216.2 327.4 224 339.1 224 352L224 416L544 416C561.7 416 576 430.3 576 448C576 465.7 561.7 480 544 480L224 480L224 544C224 556.9 216.2 568.6 204.2 573.6C192.2 578.6 178.5 575.8 169.3 566.7z"/></svg></button></th>';
         if (isPdf || isDocx || isXlsx) {
             html += '<th>Akcje</th>';
         }
@@ -922,9 +950,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         currentFindings.forEach(function (f) {
             html += '<tr>';
             html += '<td>' + escapeHtml(f.entity_type) + '</td>';
-            html += '<td>' + escapeHtml(f.marker) + '</td>';
-            html += '<td>' + (f.score.toFixed(2) * 100) + '%</td>';
-            // html += '<td>' + escapeHtml(f.reason) + '</td>';
+            html += 
+                '<td>' 
+                + escapeHtml(f.marker);
+
+                if((f.score.toFixed(2) * 100) <= 60) {
+                    html += '<span class="low-score-warning" title="Zweryfikuj wykrytą treść" data-wenk="Zweryfikuj wykrytą treść" data-wenk-pos="top"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><!--!Font Awesome Free v7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2026 Fonticons, Inc.--><path d="M320 64C334.7 64 348.2 72.1 355.2 85L571.2 485C577.9 497.4 577.6 512.4 570.4 524.5C563.2 536.6 550.1 544 536 544L104 544C89.9 544 76.8 536.6 69.6 524.5C62.4 512.4 62.1 497.4 68.8 485L284.8 85C291.8 72.1 305.3 64 320 64zM320 416C302.3 416 288 430.3 288 448C288 465.7 302.3 480 320 480C337.7 480 352 465.7 352 448C352 430.3 337.7 416 320 416zM320 224C301.8 224 287.3 239.5 288.6 257.7L296 361.7C296.9 374.2 307.4 384 319.9 384C332.5 384 342.9 374.3 343.8 361.7L351.2 257.7C352.5 239.5 338.1 224 319.8 224z"/></svg></span>';
+                }
+
+            html += '</td>';
             html += '<td>' + f.count + '</td>';
             var checkedAttribute = f.enabled !== false ? ' checked' : '';
             html += '<td><div class="checkbox-wrapper-6"><input class="tgl tgl-light" id="cb1-6-' + f.id + '" type="checkbox" name="anonymize" value="' + f.id + '"' + checkedAttribute + '><label class="tgl-btn" for="cb1-6-' + f.id + '"></label></div></td>';
@@ -938,10 +972,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     + 'data-finding-id="' + f.id + '">'
                     + '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><!--!Font Awesome Free v7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2026 Fonticons, Inc.--><path d="M320 144C254.8 144 201.2 173.6 160.1 211.7C121.6 247.5 95 290 81.4 320C95 350 121.6 392.5 160.1 428.3C201.2 466.4 254.8 496 320 496C385.2 496 438.8 466.4 479.9 428.3C518.4 392.5 545 350 558.6 320C545 290 518.4 247.5 479.9 211.7C438.8 173.6 385.2 144 320 144zM127.4 176.6C174.5 132.8 239.2 96 320 96C400.8 96 465.5 132.8 512.6 176.6C559.4 220.1 590.7 272 605.6 307.7C608.9 315.6 608.9 324.4 605.6 332.3C590.7 368 559.4 420 512.6 463.4C465.5 507.1 400.8 544 320 544C239.2 544 174.5 507.2 127.4 463.4C80.6 419.9 49.3 368 34.4 332.3C31.1 324.4 31.1 315.6 34.4 307.7C49.3 272 80.6 220 127.4 176.6zM320 400C364.2 400 400 364.2 400 320C400 290.4 383.9 264.5 360 250.7C358.6 310.4 310.4 358.6 250.7 360C264.5 383.9 290.4 400 320 400zM240.4 311.6C242.9 311.9 245.4 312 248 312C283.3 312 312 283.3 312 248C312 245.4 311.8 242.9 311.6 240.4C274.2 244.3 244.4 274.1 240.5 311.5zM286 196.6C296.8 193.6 308.2 192.1 319.9 192.1C328.7 192.1 337.4 193 345.7 194.7C346 194.8 346.2 194.8 346.5 194.9C404.4 207.1 447.9 258.6 447.9 320.1C447.9 390.8 390.6 448.1 319.9 448.1C258.3 448.1 206.9 404.6 194.7 346.7C192.9 338.1 191.9 329.2 191.9 320.1C191.9 309.1 193.3 298.3 195.9 288.1C196.1 287.4 196.2 286.8 196.4 286.2C208.3 242.8 242.5 208.6 285.9 196.7z"/></svg>'
                     + 'Pokaż'
-                    + '</button>'
-                    + '</td>';
+                    + '</button>';
+
             }
-            html += '</tr>';
+            html += '</td></tr>';
         });
         html += '</tbody></table>';
         html += renderManualFindingsSection();
@@ -1016,6 +1050,22 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             findingsDiv.querySelectorAll(
                 'input[name="anonymize"]'
             );
+
+        var toggleAllBtn =
+            findingsDiv.querySelector(
+                '.toggle-all-findings-btn'
+            );
+
+        if (toggleAllBtn) {
+            toggleAllBtn.addEventListener(
+                'click',
+                function (event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    toggleCurrentFindingsSelection();
+                }
+            );
+        }
 
         mainCheckboxes.forEach(
             function (checkbox) {

@@ -6,7 +6,7 @@ from src.documents.pdf_adapter import PdfAdapter
 from src.documents.docx_adapter import DocxAdapter
 from src.documents.xlsx_adapter import XlsxAdapter
 from src.anonymization.service import AnonymizationService
-from src.anonymization.rule_engine import OrganizationRecognizer
+from src.anonymization.rule_engine import OrganizationRecognizer, DeterministicAnalyzer, _normalize_exclusion_value
 
 def test_organization_recognizer_matches_compact_legal_form():
     text = "XYZ BROKERZY UBEZPIECZENIOWI SP.Z O.O."
@@ -14,6 +14,51 @@ def test_organization_recognizer_matches_compact_legal_form():
 
     assert results
     assert any(r.entity_type == "ORGANIZATION" and text[r.start:r.end] == text for r in results)
+
+
+def test_organization_recognizer_matches_all_legal_form_variants():
+    variants = [
+        "XYZ BROKERZY UBEZPIECZENIOWI SP.Z O.O.",
+        "XYZ BROKERZY UBEZPIECZENIOWI SP. Z O. O.",
+        "XYZ BROKERZY UBEZPIECZENIOWI SP Z O O",
+        "XYZ BROKERZY UBEZPIECZENIOWI SP. Z O O",
+        "XYZ BROKERZY UBEZPIECZENIOWI SP.Z.O.O.",
+        "XYZ BROKERZY UBEZPIECZENIOWI sp. z o. o.",
+    ]
+
+    for text in variants:
+        results = OrganizationRecognizer().analyze(text, ["ORGANIZATION"])
+        assert results, f"Brak rozpoznania dla wariantu: {text}"
+        assert any(r.entity_type == "ORGANIZATION" and text[r.start:r.end] == text for r in results), (
+            f"Nie rozpoznano całej firmy dla wariantu: {text}"
+        )
+
+
+def test_organization_recognizer_matches_business_activity_forms():
+    variants = [
+        "ZAKŁAD USŁUGOWO-HANDLOWY 'XYZ'",
+        "Zakład produkcyjno-usługowo-handlowy 'XYZ'",
+        "Zakład produkcyjno-handlowy XYZ",
+        "Przedsiębiorstwo handlowo-usługowe XYZ",
+        "Przedsiębiorstwo handlowo-usługowe 'XYZ'",
+        "Firma handlowa XYZ",
+    ]
+
+    for text in variants:
+        results = OrganizationRecognizer().analyze(text, ["ORGANIZATION"])
+        assert results, f"Brak rozpoznania dla formy działalności: {text}"
+        assert any(r.entity_type == "ORGANIZATION" and text[r.start:r.end] == text for r in results), (
+            f"Nie rozpoznano całej firmy dla formy działalności: {text}"
+        )
+
+
+def test_pkd_codes_are_excluded_from_automatic_matches():
+    analyzer = DeterministicAnalyzer()
+    sample_code = "01.11.Z"
+    assert _normalize_exclusion_value(sample_code) in analyzer.pkd_exclusions
+
+    result = analyzer.analyze(sample_code)
+    assert result == []
 
 
 def test_pdf_no_regression():
