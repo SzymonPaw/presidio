@@ -227,3 +227,23 @@ def test_xlsx_preview_renders_sheet_tabs_for_multiple_worksheets():
     assert html.count("xlsx-sheet-panel") >= 2
     assert 'class="xlsx-hit"' in html
 
+
+def test_pdf_duplicate_same_page_occurrences_get_distinct_bboxes():
+    service = AnonymizationService()
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((50, 50), "ABC123 ABC123")
+    page.insert_text((50, 80), "ABC123")
+
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    pdf_bytes = buffer.getvalue()
+    doc.close()
+
+    findings = service.analyze_pdf(pdf_bytes)
+    matches = [item for item in findings if item["raw_value"] == "ABC123"]
+
+    assert len(matches) >= 2
+    bboxes = [tuple(item["bbox"]) for item in matches if item["bbox"] is not None]
+    assert len(bboxes) == len(set(bboxes))
+

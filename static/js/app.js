@@ -252,12 +252,14 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         findingsDiv.innerHTML = documents[index].analyzed ? '' :
             '<p>Dokument oczekuje na analizę.</p>';
 
+        /*
         fileInfo.textContent =
             'Wybrany plik: '
             + selectedFile.name
             + ' ('
             + formatSize(selectedFile.size)
             + ')';
+        */
 
         if (documents[index].analyzed) {
             renderFindings(currentFindings);
@@ -3038,48 +3040,54 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                         var pdfBox =
                             occurrence.pdf_bbox;
 
-                        var textLayerRect = findPdfTextSpanRect(
-                            pageView,
-                            finding.raw_value,
-                            pdfBox,
-                            occurrences.slice(0, occurrenceIndex).filter(function (item) {
-                                return Number(item.page) === pageIndex;
-                            }).length
-                        );
-
                         var left;
                         var top;
                         var width;
                         var height;
 
-                        if (textLayerRect) {
-                            var localRect = pdfScreenRectToPageRect(
-                                pageView.div,
-                                textLayerRect
+                        if (!Array.isArray(pdfBox) || pdfBox.length !== 4) {
+                            return;
+                        }
+
+                        var point1 =
+                            pageView.viewport
+                            .convertToViewportPoint(
+                                pdfBox[0],
+                                pdfBox[1]
                             );
-                            left = localRect.left;
-                            top = localRect.top;
-                            width = localRect.width;
-                            height = localRect.height;
-                        } else {
-                            var point1 =
-                                pageView.viewport
-                                .convertToViewportPoint(
-                                    pdfBox[0],
-                                    pdfBox[1]
-                                );
 
-                            var point2 =
-                                pageView.viewport
-                                .convertToViewportPoint(
-                                    pdfBox[2],
-                                    pdfBox[3]
-                                );
+                        var point2 =
+                            pageView.viewport
+                            .convertToViewportPoint(
+                                pdfBox[2],
+                                pdfBox[3]
+                            );
 
-                            left = Math.min(point1[0], point2[0]);
-                            top = Math.min(point1[1], point2[1]);
-                            width = Math.abs(point2[0] - point1[0]);
-                            height = Math.abs(point2[1] - point1[1]);
+                        left = Math.min(point1[0], point2[0]);
+                        top = Math.min(point1[1], point2[1]);
+                        width = Math.abs(point2[0] - point1[0]);
+                        height = Math.abs(point2[1] - point1[1]);
+
+                        if (!width || !height) {
+                            var textLayerRect = findPdfTextSpanRect(
+                                pageView,
+                                finding.raw_value,
+                                pdfBox,
+                                occurrences.slice(0, occurrenceIndex).filter(function (item) {
+                                    return Number(item.page) === pageIndex;
+                                }).length
+                            );
+
+                            if (textLayerRect) {
+                                var localRect = pdfScreenRectToPageRect(
+                                    pageView.div,
+                                    textLayerRect
+                                );
+                                left = localRect.left;
+                                top = localRect.top;
+                                width = localRect.width;
+                                height = localRect.height;
+                            }
                         }
 
 
@@ -3140,32 +3148,18 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             return null;
         }
 
-        var searchText = String(rawValue);
+        var normalizedValue = String(rawValue).replace(/\s+/g, ' ').trim();
+        if (!normalizedValue || /\s/.test(normalizedValue) || normalizedValue.length > 20) {
+            return null;
+        }
+
+        var searchText = normalizedValue;
         var spans = pageView.div.querySelectorAll('.textLayer span');
         var matches = Array.from(spans).filter(function (span) {
             return (span.textContent || '').indexOf(searchText) >= 0;
         });
 
-        var span = matches[occurrenceIndex];
-        if (matches.length > 1 && Array.isArray(pdfBox) && pdfBox.length === 4) {
-            var point1 = pageView.viewport.convertToViewportPoint(pdfBox[0], pdfBox[1]);
-            var point2 = pageView.viewport.convertToViewportPoint(pdfBox[2], pdfBox[3]);
-            var expectedX = (Math.min(point1[0], point2[0]) + Math.max(point1[0], point2[0])) / 2;
-            var expectedY = (Math.min(point1[1], point2[1]) + Math.max(point1[1], point2[1])) / 2;
-
-            span = matches.reduce(function (closest, candidate) {
-                var candidateRect = candidate.getBoundingClientRect();
-                var pageRect = pageView.div.getBoundingClientRect();
-                var candidateX = candidateRect.left - pageRect.left - pageView.div.clientLeft + candidateRect.width / 2;
-                var candidateY = candidateRect.top - pageRect.top - pageView.div.clientTop + candidateRect.height / 2;
-                var currentDistance = Math.hypot(candidateX - expectedX, candidateY - expectedY);
-                if (!closest || currentDistance < closest.distance) {
-                    return { element: candidate, distance: currentDistance };
-                }
-                return closest;
-            }, null).element;
-        }
-
+        var span = matches[occurrenceIndex] || matches[0];
         if (!span) {
             return null;
         }
@@ -3185,8 +3179,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             return null;
         }
 
-        // Keep a single local rectangle. Wrapped findings use the backend
-        // geometry fallback instead of creating an oversized union.
         return rects.length === 1 ? rects[0] : null;
     }
 

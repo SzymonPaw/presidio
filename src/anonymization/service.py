@@ -54,11 +54,33 @@ class AnonymizationService:
         for page_num, page in enumerate(doc):
             text = page.get_text()
             results = self.analyzer.analyze(text)
+            hits_by_value: Dict[str, List[tuple]] = {}
+            occurrence_index: Dict[tuple[str, str], int] = {}
 
             for r in results:
-                raw_value = text[r.start : r.end]
-                hits = page.search_for(raw_value)
-                bbox = tuple(hits[0]) if hits else None
+                raw_value = text[r.start : r.end].strip()
+                if not raw_value:
+                    continue
+                hits_by_value.setdefault(raw_value, page.search_for(raw_value))
+
+            for r in results:
+                raw_value = text[r.start : r.end].strip()
+                if not raw_value:
+                    continue
+
+                hits = hits_by_value.get(raw_value, [])
+                if not hits:
+                    continue
+
+                key = (r.entity_type, raw_value)
+                hit_index = occurrence_index.get(key, 0)
+                occurrence_index[key] = hit_index + 1
+
+                if hit_index >= len(hits):
+                    hit_index = len(hits) - 1
+
+                bbox = tuple(hits[hit_index])
+
                 all_findings.append(
                     self._make_finding(r.entity_type, raw_value, r.score, page_num, bbox)
                 )
