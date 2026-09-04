@@ -289,6 +289,10 @@ def _register_routes(app: Flask) -> None:
 
             grouped[key]["count"] += 1
 
+            occurrence["occurrence_id"] = (
+                f"{key[0]}:{key[1]}:{grouped[key]['count'] - 1}"
+            )
+
             grouped[key]["occurrences"].append(
                 occurrence
             )

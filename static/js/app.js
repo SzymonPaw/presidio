@@ -3040,6 +3040,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                         var pdfBox =
                             occurrence.pdf_bbox;
 
+                        var occurrenceValue =
+                            occurrence.raw_value
+                            || finding.raw_value
+                            || '';
+
                         var left;
                         var top;
                         var width;
@@ -3068,28 +3073,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                         width = Math.abs(point2[0] - point1[0]);
                         height = Math.abs(point2[1] - point1[1]);
 
-                        if (!width || !height) {
-                            var textLayerRect = findPdfTextSpanRect(
-                                pageView,
-                                finding.raw_value,
-                                pdfBox,
-                                occurrences.slice(0, occurrenceIndex).filter(function (item) {
-                                    return Number(item.page) === pageIndex;
-                                }).length
-                            );
-
-                            if (textLayerRect) {
-                                var localRect = pdfScreenRectToPageRect(
-                                    pageView.div,
-                                    textLayerRect
-                                );
-                                left = localRect.left;
-                                top = localRect.top;
-                                width = localRect.width;
-                                height = localRect.height;
-                            }
-                        }
-
 
                         var box =
                             document.createElement(
@@ -3112,6 +3095,16 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                                 occurrenceIndex
                             );
 
+                        box.dataset.occurrenceKey =
+                            String(
+                                finding.id
+                            )
+                            + '-' + String(
+                                pageIndex
+                            )
+                            + '-' + String(
+                                occurrenceIndex
+                            );
 
                         box.style.left =
                             left + 'px';
