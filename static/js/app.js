@@ -3139,24 +3139,55 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             return (span.textContent || '').indexOf(searchText) >= 0;
         });
 
-        var span = matches[occurrenceIndex];
+        if (!matches.length) {
+            return null;
+        }
+
+        var desiredIndex = Number.isInteger(occurrenceIndex)
+            ? Math.max(0, occurrenceIndex)
+            : 0;
+
+        var span = matches[Math.min(desiredIndex, matches.length - 1)] || matches[0];
+
         if (matches.length > 1 && Array.isArray(pdfBox) && pdfBox.length === 4) {
             var point1 = pageView.viewport.convertToViewportPoint(pdfBox[0], pdfBox[1]);
             var point2 = pageView.viewport.convertToViewportPoint(pdfBox[2], pdfBox[3]);
             var expectedX = (Math.min(point1[0], point2[0]) + Math.max(point1[0], point2[0])) / 2;
             var expectedY = (Math.min(point1[1], point2[1]) + Math.max(point1[1], point2[1])) / 2;
 
-            span = matches.reduce(function (closest, candidate) {
+            var closestMatch = matches.reduce(function (closest, candidate, index) {
                 var candidateRect = candidate.getBoundingClientRect();
                 var pageRect = pageView.div.getBoundingClientRect();
                 var candidateX = candidateRect.left - pageRect.left - pageView.div.clientLeft + candidateRect.width / 2;
                 var candidateY = candidateRect.top - pageRect.top - pageView.div.clientTop + candidateRect.height / 2;
                 var currentDistance = Math.hypot(candidateX - expectedX, candidateY - expectedY);
-                if (!closest || currentDistance < closest.distance) {
-                    return { element: candidate, distance: currentDistance };
+
+                if (!closest) {
+                    return {
+                        element: candidate,
+                        distance: currentDistance,
+                        index: index,
+                    };
                 }
+
+                var isCloser = currentDistance < closest.distance;
+                var isSameDistance = Math.abs(currentDistance - closest.distance) < 1e-6;
+                var prefersOccurrence = isSameDistance && index === desiredIndex;
+
+                if (isCloser || prefersOccurrence) {
+                    return {
+                        element: candidate,
+                        distance: currentDistance,
+                        index: index,
+                    };
+                }
+
                 return closest;
-            }, null).element;
+            }, null);
+
+            if (closestMatch && closestMatch.element) {
+                span = closestMatch.element;
+            }
         }
 
         if (!span) {
