@@ -17,8 +17,8 @@ ARCHITEKTURA DOCELOWA:
 
 KROKI:
 
-1. Utwórz plik `PDF_IMPLEMENTATION_PLAN.md`.
-2. Opisz w nim plan zmian, pliki do modyfikacji, status każdego etapu i testy.
+1. Otwórz plik `PDF_IMPLEMENTATION_PLAN.md`.
+2. Opisz w nim plan zmian, pliki do modyfikacji, status każdego etapu.
 3. Po KAŻDEJ wykonanej zmianie aktualizuj ten plik: co wykonano, co zostało i czy pojawiły się problemy.
 4. Przeanalizuj obecny PDF.js/PyMuPDF flow.
 5. Usuń zależność pozycjonowania zaznaczeń od wyszukiwania tekstu w `textLayer`/DOM. Automatyczne zaznaczenia mają być rysowane bezpośrednio z bboxów/quadów backendu po konwersji przez viewport PDF.js.
@@ -31,20 +31,7 @@ KROKI:
 12. Dla skanów umożliw ręczne zaznaczanie rozpoznanego tekstu poprzez niewidoczną/selectable warstwę OCR nad stroną.
 13. Przy redakcji danych pochodzących ze skanu usuń również piksele obrazu w obszarze bbox, a nie tylko warstwę tekstową.
 14. Nie zmieniaj istniejącej logiki DOCX/XLSX ani deterministycznych recognizerów, jeśli nie jest to konieczne.
-15. Dodaj testy dla:
-
-* zwykłego PDF,
-* skanu,
-* PDF mieszanego,
-* zoomu,
-* stron obróconych,
-* różnych rozmiarów stron/CropBox,
-* powtarzających się wartości,
-* ręcznych zaznaczeń,
-* zgodności: zaznaczenie w preview = dokładnie ten sam obszar redagowany w finalnym PDF.
-
-16. Uruchom testy i popraw wszystkie znalezione problemy.
-17. Na końcu zaktualizuj `PDF_IMPLEMENTATION_PLAN.md` i oznacz każdy punkt jako DONE / TODO / BLOCKED.
+15. Na końcu zaktualizuj `PDF_IMPLEMENTATION_PLAN.md` i oznacz każdy punkt jako DONE / TODO / BLOCKED.
 
 EFEKT FINALNY:
 Użytkownik otwiera PDF w normalnym viewerze PDF.js, może zaznaczać tekst ręcznie, automatyczne findings są zawsze wyświetlane dokładnie w odpowiednim miejscu, skany są lokalnie OCR-owane przez Tesseract, a finalna anonimizacja usuwa dokładnie te obszary, które użytkownik widział i zaakceptował.
