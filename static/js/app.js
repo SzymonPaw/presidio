@@ -2912,6 +2912,30 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             syncPdfSelectionFromCurrentRange();
         });
 
+        pdfViewerContainer.addEventListener('click', function (event) {
+            if (!isSelectedFilePdf()) {
+                return;
+            }
+
+            var manualBox = event.target && event.target.closest ? event.target.closest('.pii-overlay-box[data-manual-finding-id]') : null;
+            if (!manualBox) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (window.getSelection) {
+                var selection = window.getSelection();
+                if (selection && selection.rangeCount) {
+                    selection.removeAllRanges();
+                }
+            }
+
+            pdfSelectionState = { text: '', page: null, rect: null, rects: [] };
+            focusManualPdfFinding(manualBox.dataset.manualFindingId);
+        });
+
         pdfViewerContainer.addEventListener('keyup', function () {
             syncPdfSelectionFromCurrentRange();
         });
@@ -3001,6 +3025,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     item.classList.remove('is-selected');
                 });
             }
+            if (pdfViewerElement) {
+                pdfViewerElement.querySelectorAll('.pii-overlay-box.is-selected[data-finding-id]').forEach(function (box) {
+                    box.classList.remove('is-selected');
+                });
+            }
         }
 
         if (mode === 'auto') {
@@ -3008,6 +3037,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             if (pdfFindingsList) {
                 pdfFindingsList.querySelectorAll('.pdf-manual-item.is-selected').forEach(function (item) {
                     item.classList.remove('is-selected');
+                });
+            }
+            if (pdfViewerElement) {
+                pdfViewerElement.querySelectorAll('.pii-overlay-box[data-manual-finding-id].is-selected').forEach(function (box) {
+                    box.classList.remove('is-selected');
                 });
             }
         }
@@ -4944,6 +4978,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             ] =
             current;
 
+        clearPdfSelectionStateForMode('auto');
 
         pdfPreviewState
             .selectedFindingId =
