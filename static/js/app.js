@@ -148,6 +148,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         range: null
     };
 
+    var pdfSelectionState = {
+        text: '',
+        page: null,
+        rect: null
+    };
+
     var xlsxZoomState = {
         scale: 1
     };
@@ -573,6 +579,85 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         return newFinding;
     }
 
+    function addManualFindingForPdf(rawValue) {
+        if (!isSelectedFilePdf() || !documents[currentDocumentIndex]) {
+            return null;
+        }
+
+        var value = (rawValue || '').trim();
+        if (!value) {
+            return null;
+        }
+
+        var manualFindings = getCurrentManualFindings();
+        var duplicate = manualFindings.find(function (item) {
+            return !item.xlsx_part && !item.docx && item.raw_value === value;
+        });
+
+        if (duplicate) {
+            duplicate.enabled = true;
+            renderPdfFindingsSidebar();
+            renderFindings(currentFindings);
+            return duplicate;
+        }
+
+        var pageIndex = Number(pdfSelectionState.page || 1) - 1;
+        var pageRect = null;
+        var pdfBox = null;
+        var rects = Array.isArray(pdfSelectionState.rects) ? pdfSelectionState.rects.slice() : [];
+
+        if (rects.length && pdfPreviewState.viewer) {
+            var targetPageView = pdfPreviewState.viewer.getPageView(Math.max(0, Number(pdfSelectionState.page || 1) - 1));
+            if (targetPageView && targetPageView.viewport) {
+                var firstRect = rects[0] || pdfSelectionState.rect;
+                if (firstRect) {
+                    var pdfTopLeft = targetPageView.viewport.convertToPdfPoint(firstRect.left, firstRect.top);
+                    var pdfBottomRight = targetPageView.viewport.convertToPdfPoint(firstRect.left + (firstRect.width || 0), firstRect.top + (firstRect.height || 0));
+                    pdfBox = [
+                        pdfTopLeft[0],
+                        pdfTopLeft[1],
+                        pdfBottomRight[0],
+                        pdfBottomRight[1]
+                    ];
+                }
+            }
+        } else if (pdfSelectionState.rect && pdfPreviewState.viewer) {
+            var targetPageView = pdfPreviewState.viewer.getPageView(Math.max(0, Number(pdfSelectionState.page || 1) - 1));
+            if (targetPageView && targetPageView.viewport) {
+                var localRect = pdfSelectionState.rect;
+                var pdfTopLeft = targetPageView.viewport.convertToPdfPoint(localRect.left, localRect.top);
+                var pdfBottomRight = targetPageView.viewport.convertToPdfPoint(localRect.left + (localRect.width || 0), localRect.top + (localRect.height || 0));
+                pdfBox = [
+                    pdfTopLeft[0],
+                    pdfTopLeft[1],
+                    pdfBottomRight[0],
+                    pdfBottomRight[1]
+                ];
+            }
+        }
+
+        var newFinding = {
+            id: 'manual-' + Date.now() + '-' + Math.random().toString(16).slice(2),
+            entity_type: 'MANUAL',
+            marker: '[DODANE_RĘCZNIE]',
+            raw_value: value,
+            score: 1.0,
+            reason: 'Dodane ręcznie',
+            pdf: true,
+            enabled: true,
+            manual: true,
+            pdf_page: Math.max(0, pageIndex),
+            pdf_rect: pdfSelectionState.rect || null,
+            pdf_rects: rects.length ? rects : (pdfSelectionState.rect ? [pdfSelectionState.rect] : null),
+            pdf_bbox: pdfBox
+        };
+
+        manualFindings.push(newFinding);
+        renderPdfFindingsSidebar();
+        renderFindings(currentFindings);
+        return newFinding;
+    }
+
     function addManualFindingForDocx(rawValue) {
         if (!isSelectedFileDocx() || !documents[currentDocumentIndex]) {
             return null;
@@ -656,9 +741,19 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         }
 
         renderPdfFindingsSidebar();
-        renderFindings(currentFindings);
-        refreshDocxPreviewState();
-        refreshXlsxManualHighlights();
+
+        if (isSelectedFilePdf()) {
+            if (pdfPreviewState.viewer) {
+                renderPdfOverlayForPage(pdfPreviewState.viewer.currentPageNumber - 1);
+            }
+            refreshPdfOverlayState();
+            return;
+        }
+
+        if (isSelectedFileDocx() || isSelectedFileXlsx()) {
+            refreshDocxPreviewState();
+            refreshXlsxManualHighlights();
+        }
     }
 
     function resolveXlsxSelectionStateFromRange(range) {
@@ -1091,6 +1186,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     return;
                 }
 
+                if (isSelectedFilePdf()) {
+                    focusManualPdfFinding(manualFinding.id);
+                    return;
+                }
                 openDocxPreview(null, manualFinding.id);
             });
         });
@@ -1497,6 +1596,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     // =========================================================
 
     function resetPdfPreview() {
+        pdfSelectionState = {
+            text: '',
+            page: null,
+            rect: null
+        };
 
         if (
             pdfPreviewState.loadingTask
@@ -2371,10 +2475,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         try {
 
             await ensurePdfPreviewLoaded();
-
+            bindPdfSelectionHandlers();
 
             renderPdfFindingsSidebar();
-
 
             if (findingId) {
                 focusPdfFinding(
@@ -2631,6 +2734,29 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         renderPdfFindingsSidebar();
     }
 
+    function confirmManualPdfSelection() {
+        if (!pdfSelectionState.text) {
+            return;
+        }
+
+        var manualFinding = addManualFindingForPdf(pdfSelectionState.text);
+        if (manualFinding) {
+            pdfPreviewState.selectedManualFindingId = String(manualFinding.id);
+            pdfPreviewState.selectedFindingId = null;
+        }
+
+        pdfSelectionState = { text: '', page: null, rect: null };
+        if (window.getSelection) {
+            window.getSelection().removeAllRanges();
+        }
+
+        if (pdfPreviewState.viewer && pdfPreviewState.viewer.currentPageNumber) {
+            renderPdfOverlayForPage(pdfPreviewState.viewer.currentPageNumber - 1);
+        }
+        refreshPdfOverlayState();
+        renderPdfFindingsSidebar();
+    }
+
     function confirmManualDocxSelection() {
         if (!docxSelectionState.text) {
             return;
@@ -2653,6 +2779,152 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         refreshDocxPreviewState();
         pdfViewerElement.dataset.docxOriginalHtml = pdfViewerElement.innerHTML;
         renderPdfFindingsSidebar();
+    }
+
+    function buildPdfSelectionLineRects(rects) {
+        if (!Array.isArray(rects) || !rects.length) {
+            return [];
+        }
+
+        var rows = [];
+
+        rects.forEach(function (item) {
+            var rect = {
+                left: item.left,
+                top: item.top,
+                right: item.right,
+                bottom: item.bottom,
+                width: item.width,
+                height: item.height
+            };
+
+            if (!rows.length) {
+                rows.push([rect]);
+                return;
+            }
+
+            var previous = rows[rows.length - 1];
+            var previousRect = previous[previous.length - 1];
+            var lineThreshold = Math.max(3, (previousRect.height || rect.height || 12) * 0.5);
+            var sameLine = Math.abs(rect.top - previousRect.top) <= lineThreshold;
+
+            if (sameLine) {
+                previous.push(rect);
+                return;
+            }
+
+            rows.push([rect]);
+        });
+
+        return rows.map(function (group) {
+            var left = Math.min.apply(null, group.map(function (item) { return item.left; }));
+            var top = Math.min.apply(null, group.map(function (item) { return item.top; }));
+            var right = Math.max.apply(null, group.map(function (item) { return item.right; }));
+            var bottom = Math.max.apply(null, group.map(function (item) { return item.bottom; }));
+
+            return {
+                left: left,
+                top: top,
+                right: right,
+                bottom: bottom,
+                width: Math.max(1, right - left),
+                height: Math.max(1, bottom - top)
+            };
+        });
+    }
+
+    function resolvePdfSelectionStateFromRange(range) {
+        if (!range || !pdfViewerElement || !pdfViewerElement.contains(range.commonAncestorContainer)) {
+            return null;
+        }
+
+        var selectedText = (window.getSelection ? window.getSelection().toString() : '').trim();
+        if (!selectedText) {
+            return null;
+        }
+
+        var pageNumber = 1;
+        if (pdfPreviewState.viewer && typeof pdfPreviewState.viewer.currentPageNumber === 'number') {
+            pageNumber = pdfPreviewState.viewer.currentPageNumber;
+        }
+
+        var rects = range.getClientRects ? Array.from(range.getClientRects()) : [];
+        var normalizedRects = buildPdfSelectionLineRects(rects);
+
+        if (normalizedRects.length && pdfPreviewState.viewer) {
+            var pageView = pdfPreviewState.viewer.getPageView(Math.max(0, pageNumber - 1));
+            if (pageView && pageView.div) {
+                normalizedRects = normalizedRects.map(function (item) {
+                    var localRect = pdfScreenRectToPageRect(pageView.div, item);
+                    return {
+                        left: localRect.left,
+                        top: localRect.top,
+                        right: localRect.left + localRect.width,
+                        bottom: localRect.top + localRect.height,
+                        width: Math.max(1, localRect.width),
+                        height: Math.max(1, localRect.height)
+                    };
+                });
+            }
+        }
+
+        var rect = normalizedRects.length ? normalizedRects[0] : null;
+
+        return {
+            text: selectedText,
+            page: pageNumber,
+            rect: rect,
+            rects: normalizedRects
+        };
+    }
+
+    function syncPdfSelectionFromCurrentRange() {
+        var selection = window.getSelection ? window.getSelection() : null;
+        if (!selection || selection.rangeCount === 0) {
+            return false;
+        }
+
+        var resolved = resolvePdfSelectionStateFromRange(selection.getRangeAt(0));
+        if (!resolved) {
+            pdfSelectionState = { text: '', page: null, rect: null };
+            pdfPreviewState.selectedManualFindingId = null;
+            renderPdfFindingsSidebar();
+            return false;
+        }
+
+        pdfSelectionState = resolved;
+        pdfPreviewState.selectedManualFindingId = null;
+        pdfPreviewState.selectedFindingId = null;
+        renderPdfFindingsSidebar();
+        return true;
+    }
+
+    function bindPdfSelectionHandlers() {
+        if (!pdfViewerContainer || !isSelectedFilePdf()) {
+            return;
+        }
+
+        if (pdfViewerContainer.dataset.pdfSelectionHandlersBound === 'true') {
+            return;
+        }
+
+        pdfViewerContainer.dataset.pdfSelectionHandlersBound = 'true';
+
+        pdfViewerContainer.addEventListener('mouseup', function () {
+            syncPdfSelectionFromCurrentRange();
+        });
+
+        pdfViewerContainer.addEventListener('keyup', function () {
+            syncPdfSelectionFromCurrentRange();
+        });
+
+        document.addEventListener('selectionchange', function () {
+            if (!isSelectedFilePdf() || !pdfViewerContainer) {
+                return;
+            }
+
+            syncPdfSelectionFromCurrentRange();
+        });
     }
 
     function resolveDocxSelectionStateFromRange(range) {
@@ -2717,6 +2989,30 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             pdfPreviewState.selectedFindingId = null;
             focusManualDocxFinding(manualHit.dataset.manualFindingId);
         });
+    }
+
+    function focusManualPdfFinding(manualId) {
+        if (!manualId || !documents[currentDocumentIndex] || !isSelectedFilePdf()) {
+            return;
+        }
+
+        var manualFinding = getCurrentManualFindings().find(function (entry) {
+            return String(entry.id) === String(manualId);
+        });
+
+        if (!manualFinding) {
+            return;
+        }
+
+        pdfPreviewState.selectedManualFindingId = String(manualId);
+        pdfPreviewState.selectedFindingId = null;
+
+        if (pdfPreviewState.viewer && Number.isInteger(Number(manualFinding.pdf_page))) {
+            pdfPreviewState.viewer.currentPageNumber = Number(manualFinding.pdf_page) + 1;
+        }
+
+        renderPdfFindingsSidebar();
+        requestAnimationFrame(scrollManualSidebarToSelection);
     }
 
     function focusManualDocxFinding(manualId) {
@@ -3119,6 +3415,59 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             }
         );
 
+        getCurrentManualFindings().forEach(function (manualFinding) {
+            if (manualFinding.enabled === false || Number(manualFinding.pdf_page) !== pageIndex) {
+                return;
+            }
+
+            var rects = Array.isArray(manualFinding.pdf_rects) && manualFinding.pdf_rects.length ? manualFinding.pdf_rects : (manualFinding.pdf_rect ? [manualFinding.pdf_rect] : []);
+            if (!rects.length) {
+                return;
+            }
+
+            var pdfBox = Array.isArray(manualFinding.pdf_bbox) && manualFinding.pdf_bbox.length === 4 ? manualFinding.pdf_bbox : null;
+            var textLayerRect = null;
+
+            if (manualFinding.raw_value) {
+                textLayerRect = findPdfTextSpanRect(pageView, String(manualFinding.raw_value), pdfBox, 0);
+            }
+
+            var rectCandidates = rects;
+            if (textLayerRect) {
+                var localRect = pdfScreenRectToPageRect(pageView.div, textLayerRect);
+                rectCandidates = [{ left: localRect.left, top: localRect.top, right: localRect.left + localRect.width, bottom: localRect.top + localRect.height, width: localRect.width, height: localRect.height }];
+            }
+
+            rectCandidates.forEach(function (rect) {
+                var rectLeft = rect.left;
+                var rectTop = rect.top;
+                var rectRight = typeof rect.right === 'number' ? rect.right : (rectLeft + (rect.width || 0));
+                var rectBottom = typeof rect.bottom === 'number' ? rect.bottom : (rectTop + (rect.height || 0));
+
+                if (rectLeft < 0 || rectTop < 0) {
+                    var pageRect = pageView.div.getBoundingClientRect();
+                    rectLeft = rect.left + pageRect.left;
+                    rectTop = rect.top + pageRect.top;
+                    rectRight = rect.right + pageRect.left;
+                    rectBottom = rect.bottom + pageRect.top;
+                }
+
+                var left = Math.max(0, rectLeft);
+                var top = Math.max(0, rectTop);
+                var width = Math.max(4, rectRight - rectLeft);
+                var height = Math.max(6, rectBottom - rectTop);
+
+                var box = document.createElement('div');
+                box.className = 'pii-overlay-box';
+                box.dataset.manualFindingId = String(manualFinding.id);
+                box.style.left = left + 'px';
+                box.style.top = top + 'px';
+                box.style.width = width + 'px';
+                box.style.height = height + 'px';
+                layer.appendChild(box);
+            });
+        });
+
 
         pageView.div.appendChild(
             layer
@@ -3243,6 +3592,32 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
         boxes.forEach(
             function (box) {
+
+                var manualFindingId = box.dataset.manualFindingId;
+                if (manualFindingId) {
+                    var manualFinding = getCurrentManualFindings().find(function (entry) {
+                        return String(entry.id) === String(manualFindingId);
+                    });
+
+                    if (!manualFinding) {
+                        box.classList.add('is-hidden');
+                        return;
+                    }
+
+                    var active = manualFinding.enabled !== false;
+                    var outputMode = (pdfPreviewState.previewMode || 'detections') === 'output';
+
+                    box.classList.toggle('is-hidden', !active);
+                    box.classList.toggle('is-selected', String(pdfPreviewState.selectedManualFindingId || '') === String(manualFindingId));
+                    box.classList.toggle('is-output-preview', outputMode);
+
+                    if (outputMode) {
+                        box.textContent = active ? (manualFinding.marker || '[DODANE_RĘCZNIE]') : (manualFinding.raw_value || '');
+                    } else {
+                        box.textContent = '';
+                    }
+                    return;
+                }
 
                 var findingId =
                     box.dataset.findingId;
@@ -3393,7 +3768,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     }
 
     function scrollManualSidebarToSelection() {
-        if (!pdfFindingsList || (!isSelectedFileXlsx() && !isSelectedFileDocx())) {
+        if (!pdfFindingsList || (!isSelectedFilePdf() && !isSelectedFileXlsx() && !isSelectedFileDocx())) {
             return;
         }
 
@@ -3460,14 +3835,14 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
         var html = '';
 
-        if (isSelectedFileXlsx() || isSelectedFileDocx()) {
+        if (isSelectedFilePdf() || isSelectedFileXlsx() || isSelectedFileDocx()) {
             var manualFindings = getCurrentManualFindings();
-            var selectedText = isSelectedFileXlsx()
-                ? (xlsxSelectionState.text || '')
-                : (docxSelectionState.text || '');
-            var manualAddButtonId = isSelectedFileXlsx()
-                ? 'manual-xlsx-add-button'
-                : 'manual-docx-add-button';
+            var selectedText = isSelectedFilePdf()
+                ? (pdfSelectionState.text || '')
+                : (isSelectedFileXlsx() ? (xlsxSelectionState.text || '') : (docxSelectionState.text || ''));
+            var manualAddButtonId = isSelectedFilePdf()
+                ? 'manual-pdf-add-button'
+                : (isSelectedFileXlsx() ? 'manual-xlsx-add-button' : 'manual-docx-add-button');
             html += '<div class="pdf-manual-section">';
             html += '<div class="pdf-manual-header">';
             html += '<span>Dodane ręcznie</span>';
@@ -3478,13 +3853,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             if (selectedText) {
                 html += '<div class="pdf-manual-selection">';
                 html += '<div class="pdf-manual-value">' + escapeHtml(selectedText) + '</div>';
-                    html += '<button type="button" id="' + manualAddButtonId + '" class="btn btn-primary btn-sm">Dodaj zaznaczenie</button>';
+                html += '<button type="button" id="' + manualAddButtonId + '" class="btn btn-primary btn-sm">Dodaj zaznaczenie</button>';
                 html += '</div>';
             }
 
             if (!manualFindings.length) {
                 if (!selectedText) {
-                    html += '<div class="pdf-manual-empty">Zaznacz tekst w komórce, a następnie kliknij "Dodaj zaznaczenie".</div>';
+                    html += '<div class="pdf-manual-empty">Zaznacz tekst, a następnie kliknij "Dodaj zaznaczenie".</div>';
                 }
             } else {
                 manualFindings.forEach(function (manualFinding) {
@@ -3735,10 +4110,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         pdfFindingsList.innerHTML =
             html;
 
-        var manualAddButton = pdfFindingsList.querySelector('#manual-xlsx-add-button, #manual-docx-add-button');
+        var manualAddButton = pdfFindingsList.querySelector('#manual-pdf-add-button, #manual-xlsx-add-button, #manual-docx-add-button');
         if (manualAddButton) {
             manualAddButton.addEventListener('click', function () {
-                if (isSelectedFileXlsx()) {
+                if (isSelectedFilePdf()) {
+                    confirmManualPdfSelection();
+                } else if (isSelectedFileXlsx()) {
                     confirmManualXlsxSelection();
                 } else {
                     confirmManualDocxSelection();
@@ -3823,7 +4200,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 }
                 var manualId = item.getAttribute('data-manual-id');
                 if (manualId) {
-                    if (isSelectedFileXlsx()) {
+                    if (isSelectedFilePdf()) {
+                        focusManualPdfFinding(manualId);
+                    } else if (isSelectedFileXlsx()) {
                         focusManualXlsxFinding(manualId);
                     } else {
                         focusManualDocxFinding(manualId);
