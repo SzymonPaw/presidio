@@ -132,6 +132,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         findController: null,
 
         selectedFindingId: null,
+        pendingFocusFindingId: null,
         occurrenceIndex: {},
 
         loadedFile: null,
@@ -1714,6 +1715,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             findController: null,
 
             selectedFindingId: null,
+            pendingFocusFindingId: null,
             occurrenceIndex: {},
 
             loadedFile: null,
@@ -2063,11 +2065,16 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 ];
 
                 if (
-                    selectedOccurrence
+                    pdfPreviewState.pendingFocusFindingId
+                    && pdfPreviewState.pendingFocusFindingId
+                        === pdfPreviewState.selectedFindingId
+                    && selectedOccurrence
                     && Number(selectedOccurrence.page) === event.pageNumber - 1
                 ) {
                     requestAnimationFrame(function () {
-                        scrollToSelectedPdfBox();
+                        if (scrollToSelectedPdfBox()) {
+                            pdfPreviewState.pendingFocusFindingId = null;
+                        }
                     });
                 }
 
@@ -4640,6 +4647,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             .selectedFindingId =
             findingId;
 
+        pdfPreviewState.pendingFocusFindingId = findingId;
+
 
         // Aktualizujemy sidebar.
         //
@@ -5123,11 +5132,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     }
                 }
 
-                scrollToSelectedPdfBox();
-
-                requestAnimationFrame(function () {
-                    scrollToSelectedPdfBox();
-                });
+                if (scrollToSelectedPdfBox()) {
+                    pdfPreviewState.pendingFocusFindingId = null;
+                }
+                scrollPdfSidebarToFinding(findingId);
             }
         );
     }
@@ -5146,7 +5154,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             || !pdfViewerContainer
             || !pdfPreviewState.viewer
         ) {
-            return;
+            return false;
         }
 
 
@@ -5163,7 +5171,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 
         if (!occurrences.length) {
-            return;
+            return false;
         }
 
 
@@ -5267,8 +5275,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 behavior: 'smooth'
             });
 
-
-            return;
+            return true;
         }
 
 
@@ -5294,7 +5301,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             )
             || pageIndex < 0
         ) {
-            return;
+            return false;
         }
 
 
@@ -5309,6 +5316,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         if (
             !pageView
             || !pageView.div
+            || !pageView.div.isConnected
         ) {
             if (
                 pdfPreviewState.viewer
@@ -5318,13 +5326,25 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     pageNumber: pageIndex + 1
                 });
             }
-            return;
+            return false;
         }
 
 
         var pageRect =
             pageView.div
                 .getBoundingClientRect();
+
+        if (!pageRect.height) {
+            if (
+                pdfPreviewState.viewer
+                && typeof pdfPreviewState.viewer.scrollPageIntoView === 'function'
+            ) {
+                pdfPreviewState.viewer.scrollPageIntoView({
+                    pageNumber: pageIndex + 1
+                });
+            }
+            return false;
+        }
 
 
         var targetTop =
@@ -5434,6 +5454,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
             behavior: 'smooth'
         });
+
+        return true;
     }
 
 
