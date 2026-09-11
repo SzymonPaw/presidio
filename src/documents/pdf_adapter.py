@@ -8,9 +8,8 @@ class PdfAdapter:
     """Adapter do analizy i anonimizacji dokumentow PDF z warstwa tekstowa."""
 
     @staticmethod
-    def _header_footer_band_height(
+    def _footer_band_height(
         page: fitz.Page,
-        header_ratio: float = 0.08,
         footer_ratio: float = 0.08,
         min_band_height: float = 24.0,
         max_band_height: float = 80.0,
@@ -20,24 +19,22 @@ class PdfAdapter:
             min_band_height,
             min(
                 max_band_height,
-                page_rect.height * max(header_ratio, footer_ratio),
+                page_rect.height * footer_ratio,
             ),
         )
 
     @staticmethod
-    def _redact_page_header_footer(
+    def _redact_page_footer(
         page: fitz.Page,
-        header_ratio: float = 0.08,
         footer_ratio: float = 0.08,
         min_band_height: float = 24.0,
         max_band_height: float = 80.0,
     ) -> None:
-        """Redaguje wszystkie slowa z blokow naglowka i stopki."""
+        """Redaguje wszystkie slowa z blokow stopki."""
 
         page_rect = page.rect
-        band_height = PdfAdapter._header_footer_band_height(
+        band_height = PdfAdapter._footer_band_height(
             page,
-            header_ratio=header_ratio,
             footer_ratio=footer_ratio,
             min_band_height=min_band_height,
             max_band_height=max_band_height,
@@ -46,7 +43,6 @@ class PdfAdapter:
         if band_height <= 0:
             return
 
-        top_cutoff = page_rect.y0 + band_height
         bottom_cutoff = page_rect.y1 - band_height
 
         blocks = page.get_text("blocks", sort=True) or []
@@ -59,10 +55,9 @@ class PdfAdapter:
             if not block_text:
                 continue
 
-            intersects_header = rect.y0 < top_cutoff
             intersects_footer = rect.y1 > bottom_cutoff
 
-            if not (intersects_header or intersects_footer):
+            if not intersects_footer:
                 continue
 
             for word in page.get_text("words", clip=rect, sort=True) or []:
@@ -373,7 +368,7 @@ class PdfAdapter:
                 replacements[raw] = marker
 
         # ---------------------------------------------------
-        # Najpierw usuwamy layout strony w pasach przy krawedziach.
+        # Najpierw usuwamy stopke z dolnego pasa strony.
         # Potem nakladamy zwykla anonimizacje tekstowa.
         # ---------------------------------------------------
 
@@ -383,7 +378,7 @@ class PdfAdapter:
         )
 
         for page in doc:
-            self._redact_page_header_footer(page)
+            self._redact_page_footer(page)
 
             if replacements:
                 for raw_value, marker in replacements.items():

@@ -98,7 +98,7 @@ def test_pdf_no_regression():
     doc_out.close()
 
 
-  def test_pdf_anonymize_removes_header_and_footer_bands():
+def test_pdf_anonymize_removes_footer_band_only():
     adapter = PdfAdapter()
 
     doc = fitz.open()
@@ -117,7 +117,7 @@ def test_pdf_no_regression():
     doc_out = fitz.open(stream=out_pdf, filetype="pdf")
     text_out = "\n".join(page.get_text() for page in doc_out)
 
-    assert "NAGLOWEK DOKUMENTU" not in text_out
+    assert "NAGLOWEK DOKUMENTU" in text_out
     assert "STOPKA DOKUMENTU" not in text_out
     assert "Tekst srodkowy pozostaje widoczny." in text_out
     doc_out.close()
