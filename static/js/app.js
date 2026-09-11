@@ -47,6 +47,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             'pdf-viewer'
         );
 
+    var pdfPreviewLoader =
+        document.getElementById(
+            'pdf-preview-loader'
+        );
+
     var pdfFindingsList =
         document.getElementById(
             'pdf-findings-list'
@@ -136,6 +141,21 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         initialScaleApplied: false,
         previewMode: 'detections'
     };
+
+    function setPdfPreviewLoading(isLoading) {
+        if (!pdfPreviewLoader) {
+            return;
+        }
+
+        pdfPreviewLoader.classList.toggle(
+            'is-visible',
+            isLoading
+        );
+        pdfPreviewLoader.setAttribute(
+            'aria-hidden',
+            isLoading ? 'false' : 'true'
+        );
+    }
 
     var xlsxSelectionState = {
         text: '',
@@ -2520,6 +2540,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             'false'
         );
 
+        setPdfPreviewLoading(true);
+
         // Jeśli viewer już istnieje (ponowne otwarcie), czekamy aż
         // jego pierwsza strona będzie podłączona do layoutu.
         await waitForPdfLayoutReady(
@@ -2556,6 +2578,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             console.error(
                 error
             );
+        } finally {
+            setPdfPreviewLoading(false);
         }
     }
 

@@ -228,6 +228,17 @@
 
                 <div class="pdf-viewer-pane">
                     <div
+                        id="pdf-preview-loader"
+                        class="pdf-preview-loader"
+                        role="status"
+                        aria-live="polite"
+                        aria-hidden="true"
+                    >
+                        <span class="pdf-preview-spinner" aria-hidden="true"></span>
+                        <span>Ładowanie podglądu PDF...</span>
+                    </div>
+
+                    <div
                         id="pdf-viewer-container"
                         tabindex="0"
                     >
