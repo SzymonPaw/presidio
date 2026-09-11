@@ -2050,6 +2050,27 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     event.pageNumber - 1
                 );
 
+                var selectedFinding = pdfPreviewState.selectedFindingId
+                    ? getFindingById(pdfPreviewState.selectedFindingId)
+                    : null;
+                var selectedOccurrences = selectedFinding
+                    ? getFindingOccurrences(selectedFinding)
+                    : [];
+                var selectedOccurrence = selectedOccurrences[
+                    pdfPreviewState.occurrenceIndex[
+                        pdfPreviewState.selectedFindingId
+                    ] || 0
+                ];
+
+                if (
+                    selectedOccurrence
+                    && Number(selectedOccurrence.page) === event.pageNumber - 1
+                ) {
+                    requestAnimationFrame(function () {
+                        scrollToSelectedPdfBox();
+                    });
+                }
+
                 if (
                     !pdfPreviewState.ready
                 ) {
@@ -2527,6 +2548,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         if (!isSelectedFilePdf()) {
             return;
         }
+
+        modalIsOpen = true;
 
         document.body.classList.add(
             'pdf-preview-open'
@@ -5082,7 +5105,29 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
         requestAnimationFrame(
             function () {
+                var selectedFinding = getFindingById(findingId);
+                var selectedOccurrences = getFindingOccurrences(selectedFinding);
+                var selectedOccurrence = selectedOccurrences[
+                    pdfPreviewState.occurrenceIndex[findingId] || 0
+                ];
+
+                if (
+                    selectedOccurrence
+                    && pdfPreviewState.viewer
+                ) {
+                    var targetPageIndex = Number(selectedOccurrence.page);
+                    var targetPageView = pdfPreviewState.viewer.getPageView(targetPageIndex);
+
+                    if (targetPageView && targetPageView.div) {
+                        renderPdfOverlayForPage(targetPageIndex);
+                    }
+                }
+
                 scrollToSelectedPdfBox();
+
+                requestAnimationFrame(function () {
+                    scrollToSelectedPdfBox();
+                });
             }
         );
     }
@@ -5265,6 +5310,14 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             !pageView
             || !pageView.div
         ) {
+            if (
+                pdfPreviewState.viewer
+                && typeof pdfPreviewState.viewer.scrollPageIntoView === 'function'
+            ) {
+                pdfPreviewState.viewer.scrollPageIntoView({
+                    pageNumber: pageIndex + 1
+                });
+            }
             return;
         }
 
