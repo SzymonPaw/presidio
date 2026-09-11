@@ -12,29 +12,27 @@ class AnonymizationService:
     @staticmethod
     def _extract_pdf_body_text(
         page: fitz.Page,
-        header_ratio: float = 0.08,
         footer_ratio: float = 0.08,
         min_band_height: float = 24.0,
         max_band_height: float = 80.0,
     ) -> str:
-        """Buduje tekst analityczny PDF bez naglowka i stopki."""
+        """Buduje tekst analityczny PDF bez stopki, ale z naglowkiem."""
 
         page_rect = page.rect
         band_height = max(
             min_band_height,
             min(
                 max_band_height,
-                page_rect.height * max(header_ratio, footer_ratio),
+                page_rect.height * footer_ratio,
             ),
         )
 
-        top_cutoff = page_rect.y0 + band_height
         bottom_cutoff = page_rect.y1 - band_height
 
         words = page.get_text("words", sort=True) or []
         filtered_words = [
             word for word in words
-            if len(word) >= 5 and word[1] >= top_cutoff and word[3] <= bottom_cutoff
+            if len(word) >= 5 and word[3] <= bottom_cutoff
         ]
 
         if not filtered_words:

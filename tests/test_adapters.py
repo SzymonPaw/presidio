@@ -122,6 +122,52 @@ def test_pdf_anonymize_removes_footer_band_only():
     assert "Tekst srodkowy pozostaje widoczny." in text_out
     doc_out.close()
 
+
+def test_pdf_analysis_includes_header_but_excludes_footer():
+    service = AnonymizationService()
+
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text(fitz.Point(50, 24), "NIP 5260250274")
+    page.insert_text(fitz.Point(50, 420), "Tekst srodkowy pozostaje widoczny.")
+    page.insert_text(fitz.Point(50, 820), "NIP 5260250274")
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    pdf_bytes = buf.getvalue()
+    doc.close()
+
+    findings = service.analyze_pdf(pdf_bytes)
+
+    assert any(finding["bbox"] and finding["bbox"][1] < 100 for finding in findings)
+    assert all(finding["bbox"][1] < 800 for finding in findings if finding["bbox"])
+
+
+def test_pdf_footer_redaction_does_not_remove_body_from_large_text_block():
+    adapter = PdfAdapter()
+
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    body = "\n".join(f"Linia tekstu {index}" for index in range(1, 35))
+    page.insert_textbox(fitz.Rect(50, 50, 545, 790), body)
+    page.insert_text(fitz.Point(50, 820), "STOPKA DOKUMENTU")
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    pdf_bytes = buf.getvalue()
+    doc.close()
+
+    out_pdf = adapter.anonymize(pdf_bytes, [])
+
+    doc_out = fitz.open(stream=out_pdf, filetype="pdf")
+    text_out = "\n".join(page.get_text() for page in doc_out)
+
+    assert "Linia tekstu 1" in text_out
+    assert "Linia tekstu 34" in text_out
+    assert "STOPKA DOKUMENTU" not in text_out
+    doc_out.close()
+
+
 def test_docx_merge_runs_and_anonymize():
     # Prosty test na integracje docx - mockujac podstawowy DOCX bez rozbudowanych czesci
     from lxml import etree

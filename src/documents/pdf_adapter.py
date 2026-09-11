@@ -29,7 +29,7 @@ class PdfAdapter:
         footer_ratio: float = 0.08,
         min_band_height: float = 24.0,
         max_band_height: float = 80.0,
-    ) -> None:
+    ) -> bool:
         """Redaguje wszystkie slowa z blokow stopki."""
 
         page_rect = page.rect
@@ -41,34 +41,27 @@ class PdfAdapter:
         )
 
         if band_height <= 0:
-            return
+            return False
 
-        bottom_cutoff = page_rect.y1 - band_height
+        footer_rect = fitz.Rect(
+            page_rect.x0,
+            page_rect.y1 - band_height,
+            page_rect.x1,
+            page_rect.y1,
+        )
 
-        blocks = page.get_text("blocks", sort=True) or []
-        for block in blocks:
-            if len(block) < 5:
+        redacted = False
+        for word in page.get_text("words", clip=footer_rect, sort=True) or []:
+            if len(word) < 5:
                 continue
 
-            rect = fitz.Rect(block[:4])
-            block_text = str(block[4] or "").strip()
-            if not block_text:
-                continue
+            page.add_redact_annot(
+                fitz.Rect(word[:4]),
+                fill=(1, 1, 1),
+            )
+            redacted = True
 
-            intersects_footer = rect.y1 > bottom_cutoff
-
-            if not intersects_footer:
-                continue
-
-            for word in page.get_text("words", clip=rect, sort=True) or []:
-                if len(word) < 5:
-                    continue
-
-                word_rect = fitz.Rect(word[:4])
-                page.add_redact_annot(
-                    word_rect,
-                    fill=(1, 1, 1),
-                )
+        return redacted
 
     def get_full_text(
         self,
@@ -378,7 +371,7 @@ class PdfAdapter:
         )
 
         for page in doc:
-            self._redact_page_footer(page)
+            has_redactions = self._redact_page_footer(page)
 
             if replacements:
                 for raw_value, marker in replacements.items():
@@ -387,6 +380,7 @@ class PdfAdapter:
                     )
 
                     for rect in hits:
+                        has_redactions = True
                         page.add_redact_annot(
                             quad=rect,
                             text=marker,
@@ -400,9 +394,10 @@ class PdfAdapter:
                             text_color=(0, 0, 0),
                         )
 
-            page.apply_redactions(
-                images=fitz.PDF_REDACT_IMAGE_NONE
-            )
+            if has_redactions:
+                page.apply_redactions(
+                    images=fitz.PDF_REDACT_IMAGE_NONE
+                )
 
         buf = io.BytesIO()
 
