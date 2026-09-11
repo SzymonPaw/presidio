@@ -5209,6 +5209,33 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 current
             ];
 
+        var pageIndex = Number(occurrence.page);
+        var pdfBox = occurrence.pdf_bbox;
+
+        if (
+            Number.isInteger(pageIndex)
+            && pageIndex >= 0
+            && Array.isArray(pdfBox)
+            && pdfBox.length === 4
+            && typeof pdfPreviewState.viewer.scrollPageIntoView === 'function'
+        ) {
+            pdfPreviewState.viewer.scrollPageIntoView({
+                pageNumber: pageIndex + 1,
+                destArray: [
+                    null,
+                    { name: 'XYZ' },
+                    (pdfBox[0] + pdfBox[2]) / 2,
+                    pdfBox[3],
+                    null
+                ],
+                allowNegativeOffset: true,
+                ignoreDestinationZoom: true,
+                center: 'both'
+            });
+
+            return true;
+        }
+
 
         // -----------------------------------------------------
         // Najlepszy przypadek:
@@ -5302,12 +5329,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         // Wtedy przewijamy płynnie bezpośrednio do
         // współrzędnych pdf_bbox na właściwej stronie.
         // -----------------------------------------------------
-
-        var pageIndex =
-            Number(
-                occurrence.page
-            );
-
 
         if (
             !Number.isFinite(
