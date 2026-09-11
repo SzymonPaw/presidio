@@ -5225,6 +5225,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 && targetPageView.div
                 && targetPageView.div.isConnected
                 && targetPageView.viewport
+                && targetPageView.renderingState === 3
             ) {
                 var targetContainerRect = pdfViewerContainer.getBoundingClientRect();
                 var targetPageRect = targetPageView.div.getBoundingClientRect();
@@ -5372,6 +5373,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             !pageView
             || !pageView.div
             || !pageView.div.isConnected
+            || pageView.renderingState !== 3
         ) {
             if (
                 pdfPreviewState.viewer
