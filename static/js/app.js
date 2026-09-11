@@ -130,6 +130,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         occurrenceIndex: {},
 
         loadedFile: null,
+        loadedPreviewKey: null,
         ready: false,
 
         initialScaleApplied: false,
@@ -1696,6 +1697,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             occurrenceIndex: {},
 
             loadedFile: null,
+            loadedPreviewKey: null,
             ready: false,
             previewMode: 'detections',
             initialScaleApplied: false,
@@ -1870,11 +1872,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
     async function ensurePdfPreviewLoaded() {
 
+        var previewKey = await getPdfPreviewCacheKey();
+
         if (
             pdfPreviewState.ready
             && pdfPreviewState.viewer
-            && pdfPreviewState.loadedFile
-                === selectedFile
+            && pdfPreviewState.loadedPreviewKey
+                === previewKey
         ) {
 
             // Viewer istnieje i faktycznie
@@ -1903,7 +1907,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 
         var fileForPreview =
-            selectedFile;
+            await getPdfPreviewBlob();
 
 
         resetPdfPreview();
@@ -2034,7 +2038,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                         true;
 
                     pdfPreviewState.loadedFile =
-                        fileForPreview;
+                        selectedFile;
+
+                    pdfPreviewState.loadedPreviewKey =
+                        previewKey;
                 }
 
 
@@ -2373,6 +2380,18 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         }
     }
 
+    async function getCleanPdfPreviewBlob() {
+        var formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('confirmed_ids', '[]');
+
+        var response = await fetch('/anonymize', { method: 'POST', body: formData });
+        if (!response.ok) {
+            throw new Error('Nie udało się przygotować czystego podglądu PDF.');
+        }
+        return await response.blob();
+    }
+
     async function getAnonymizedPreviewBlob() {
         var checkedIds = [];
         findingsDiv.querySelectorAll('input[type="checkbox"]:checked').forEach(function (checkbox) {
@@ -2388,6 +2407,46 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             throw new Error('Nie udało się przygotować podglądu po anonimizacji.');
         }
         return await response.blob();
+    }
+
+    async function getPdfPreviewBlob() {
+        if (!isSelectedFilePdf()) {
+            return selectedFile;
+        }
+
+        if ((pdfPreviewState.previewMode || 'detections') === 'output') {
+            return await getAnonymizedPreviewBlob();
+        }
+
+        return await getCleanPdfPreviewBlob();
+    }
+
+    async function getPdfPreviewCacheKey() {
+        if (!selectedFile || !isSelectedFilePdf()) {
+            return null;
+        }
+
+        if ((pdfPreviewState.previewMode || 'detections') === 'output') {
+            var checkedIds = [];
+            findingsDiv.querySelectorAll('input[type="checkbox"]:checked').forEach(function (checkbox) {
+                checkedIds.push(checkbox.value);
+            });
+
+            return [
+                selectedFile.name || '',
+                selectedFile.size || 0,
+                selectedFile.lastModified || 0,
+                'output',
+                checkedIds.join(',')
+            ].join('|');
+        }
+
+        return [
+            selectedFile.name || '',
+            selectedFile.size || 0,
+            selectedFile.lastModified || 0,
+            'detections'
+        ].join('|');
     }
 
     function decorateDocxFindings(outputMode) {
@@ -5501,6 +5560,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     });
                 }
             }
+            return;
+        }
+
+        if (isSelectedFilePdf() && modalIsOpen) {
+            openPdfPreview(pdfPreviewState.selectedFindingId);
             return;
         }
 

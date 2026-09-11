@@ -9,6 +9,61 @@ from src.anonymization.marker_registry import MarkerRegistry
 class AnonymizationService:
     """Centralna usługa analizy tekstu w dokumentach PDF, DOCX i XLSX."""
 
+    @staticmethod
+    def _extract_pdf_body_text(
+        page: fitz.Page,
+        header_ratio: float = 0.08,
+        footer_ratio: float = 0.08,
+        min_band_height: float = 24.0,
+        max_band_height: float = 80.0,
+    ) -> str:
+        """Buduje tekst analityczny PDF bez naglowka i stopki."""
+
+        page_rect = page.rect
+        band_height = max(
+            min_band_height,
+            min(
+                max_band_height,
+                page_rect.height * max(header_ratio, footer_ratio),
+            ),
+        )
+
+        top_cutoff = page_rect.y0 + band_height
+        bottom_cutoff = page_rect.y1 - band_height
+
+        words = page.get_text("words", sort=True) or []
+        filtered_words = [
+            word for word in words
+            if len(word) >= 5 and word[1] >= top_cutoff and word[3] <= bottom_cutoff
+        ]
+
+        if not filtered_words:
+            return ""
+
+        lines: list[str] = []
+        current_key = None
+        current_words: list[str] = []
+
+        for word in filtered_words:
+            block_no = word[5]
+            line_no = word[6]
+            key = (block_no, line_no)
+
+            if current_key is None:
+                current_key = key
+            elif key != current_key:
+                if current_words:
+                    lines.append(" ".join(current_words).strip())
+                current_words = []
+                current_key = key
+
+            current_words.append(str(word[4]))
+
+        if current_words:
+            lines.append(" ".join(current_words).strip())
+
+        return "\n".join(line for line in lines if line)
+
     def __init__(self):
         self.analyzer = DeterministicAnalyzer()
         self.marker_registry = MarkerRegistry()
@@ -53,7 +108,7 @@ class AnonymizationService:
 
         try:
             for page_num, page in enumerate(doc):
-                text = page.get_text()
+                text = self._extract_pdf_body_text(page)
                 results = self.analyzer.analyze(text)
                 hits_by_value: Dict[str, List[Any]] = {}
                 grouped_indexes: Dict[str, int] = {}

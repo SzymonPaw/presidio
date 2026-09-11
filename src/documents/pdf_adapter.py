@@ -7,6 +7,74 @@ import pikepdf
 class PdfAdapter:
     """Adapter do analizy i anonimizacji dokumentow PDF z warstwa tekstowa."""
 
+    @staticmethod
+    def _header_footer_band_height(
+        page: fitz.Page,
+        header_ratio: float = 0.08,
+        footer_ratio: float = 0.08,
+        min_band_height: float = 24.0,
+        max_band_height: float = 80.0,
+    ) -> float:
+        page_rect = page.rect
+        return max(
+            min_band_height,
+            min(
+                max_band_height,
+                page_rect.height * max(header_ratio, footer_ratio),
+            ),
+        )
+
+    @staticmethod
+    def _redact_page_header_footer(
+        page: fitz.Page,
+        header_ratio: float = 0.08,
+        footer_ratio: float = 0.08,
+        min_band_height: float = 24.0,
+        max_band_height: float = 80.0,
+    ) -> None:
+        """Redaguje wszystkie slowa z blokow naglowka i stopki."""
+
+        page_rect = page.rect
+        band_height = PdfAdapter._header_footer_band_height(
+            page,
+            header_ratio=header_ratio,
+            footer_ratio=footer_ratio,
+            min_band_height=min_band_height,
+            max_band_height=max_band_height,
+        )
+
+        if band_height <= 0:
+            return
+
+        top_cutoff = page_rect.y0 + band_height
+        bottom_cutoff = page_rect.y1 - band_height
+
+        blocks = page.get_text("blocks", sort=True) or []
+        for block in blocks:
+            if len(block) < 5:
+                continue
+
+            rect = fitz.Rect(block[:4])
+            block_text = str(block[4] or "").strip()
+            if not block_text:
+                continue
+
+            intersects_header = rect.y0 < top_cutoff
+            intersects_footer = rect.y1 > bottom_cutoff
+
+            if not (intersects_header or intersects_footer):
+                continue
+
+            for word in page.get_text("words", clip=rect, sort=True) or []:
+                if len(word) < 5:
+                    continue
+
+                word_rect = fitz.Rect(word[:4])
+                page.add_redact_annot(
+                    word_rect,
+                    fill=(1, 1, 1),
+                )
+
     def get_full_text(
         self,
         pdf_bytes: bytes,
@@ -304,11 +372,9 @@ class PdfAdapter:
             if raw and marker:
                 replacements[raw] = marker
 
-        if not replacements:
-            return working_bytes
-
         # ---------------------------------------------------
-        # Normalna anonimizacja tekstowa - tak jak dotychczas.
+        # Najpierw usuwamy layout strony w pasach przy krawedziach.
+        # Potem nakladamy zwykla anonimizacje tekstowa.
         # ---------------------------------------------------
 
         doc = fitz.open(
@@ -317,24 +383,27 @@ class PdfAdapter:
         )
 
         for page in doc:
-            for raw_value, marker in replacements.items():
-                hits = page.search_for(
-                    raw_value
-                )
+            self._redact_page_header_footer(page)
 
-                for rect in hits:
-                    page.add_redact_annot(
-                        quad=rect,
-                        text=marker,
-                        fontname="Helv",
-                        fontsize=max(
-                            4.0,
-                            rect.height * 0.75,
-                        ),
-                        align=fitz.TEXT_ALIGN_LEFT,
-                        fill=(1, 1, 1),
-                        text_color=(0, 0, 0),
+            if replacements:
+                for raw_value, marker in replacements.items():
+                    hits = page.search_for(
+                        raw_value
                     )
+
+                    for rect in hits:
+                        page.add_redact_annot(
+                            quad=rect,
+                            text=marker,
+                            fontname="Helv",
+                            fontsize=max(
+                                4.0,
+                                rect.height * 0.75,
+                            ),
+                            align=fitz.TEXT_ALIGN_LEFT,
+                            fill=(1, 1, 1),
+                            text_color=(0, 0, 0),
+                        )
 
             page.apply_redactions(
                 images=fitz.PDF_REDACT_IMAGE_NONE

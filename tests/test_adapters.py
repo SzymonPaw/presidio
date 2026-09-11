@@ -97,6 +97,31 @@ def test_pdf_no_regression():
     assert "[TAJNE]" in text_out
     doc_out.close()
 
+
+  def test_pdf_anonymize_removes_header_and_footer_bands():
+    adapter = PdfAdapter()
+
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text(fitz.Point(50, 24), "NAGLOWEK DOKUMENTU")
+    page.insert_text(fitz.Point(50, 420), "Tekst srodkowy pozostaje widoczny.")
+    page.insert_text(fitz.Point(50, 820), "STOPKA DOKUMENTU")
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    pdf_bytes = buf.getvalue()
+    doc.close()
+
+    out_pdf = adapter.anonymize(pdf_bytes, [])
+
+    doc_out = fitz.open(stream=out_pdf, filetype="pdf")
+    text_out = "\n".join(page.get_text() for page in doc_out)
+
+    assert "NAGLOWEK DOKUMENTU" not in text_out
+    assert "STOPKA DOKUMENTU" not in text_out
+    assert "Tekst srodkowy pozostaje widoczny." in text_out
+    doc_out.close()
+
 def test_docx_merge_runs_and_anonymize():
     # Prosty test na integracje docx - mockujac podstawowy DOCX bez rozbudowanych czesci
     from lxml import etree
