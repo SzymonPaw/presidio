@@ -2881,13 +2881,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     function syncPdfSelectionFromCurrentRange() {
         var selection = window.getSelection ? window.getSelection() : null;
         if (!selection || selection.rangeCount === 0) {
-            return false;
+            return Boolean(pdfSelectionState.text);
         }
 
         var resolved = resolvePdfSelectionStateFromRange(selection.getRangeAt(0));
         if (!resolved) {
-            pdfSelectionState = { text: '', page: null, rect: null, rects: [] };
-            return false;
+            return Boolean(pdfSelectionState.text);
         }
 
         pdfSelectionState = resolved;
