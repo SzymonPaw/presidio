@@ -1888,6 +1888,16 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         );
     }
 
+    function waitForPdfLayoutSettled() {
+        return new Promise(function (resolve) {
+            requestAnimationFrame(function () {
+                requestAnimationFrame(function () {
+                    resolve();
+                });
+            });
+        });
+    }
+
     // =========================================================
     // Ładowanie całego PDF
     // =========================================================
@@ -2586,6 +2596,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         try {
 
             await ensurePdfPreviewLoaded();
+            await waitForPdfLayoutReady(
+                pdfPreviewState.viewer
+            );
+            await waitForPdfLayoutSettled();
             bindPdfSelectionHandlers();
 
             renderPdfFindingsSidebar();
