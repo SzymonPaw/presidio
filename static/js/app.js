@@ -5217,23 +5217,43 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             && pageIndex >= 0
             && Array.isArray(pdfBox)
             && pdfBox.length === 4
-            && typeof pdfPreviewState.viewer.scrollPageIntoView === 'function'
         ) {
-            pdfPreviewState.viewer.scrollPageIntoView({
-                pageNumber: pageIndex + 1,
-                destArray: [
-                    null,
-                    { name: 'XYZ' },
-                    (pdfBox[0] + pdfBox[2]) / 2,
-                    pdfBox[3],
-                    null
-                ],
-                allowNegativeOffset: true,
-                ignoreDestinationZoom: true,
-                center: 'both'
-            });
+            var targetPageView = pdfPreviewState.viewer.getPageView(pageIndex);
 
-            return true;
+            if (
+                targetPageView
+                && targetPageView.div
+                && targetPageView.div.isConnected
+                && targetPageView.viewport
+            ) {
+                var targetContainerRect = pdfViewerContainer.getBoundingClientRect();
+                var targetPageRect = targetPageView.div.getBoundingClientRect();
+                var targetPoint = targetPageView.viewport.convertToViewportPoint(
+                    (pdfBox[0] + pdfBox[2]) / 2,
+                    (pdfBox[1] + pdfBox[3]) / 2
+                );
+
+                if (targetPageRect.height && targetPageRect.width) {
+                    var targetTop = pdfViewerContainer.scrollTop
+                        + targetPageRect.top
+                        - targetContainerRect.top
+                        + targetPoint[1]
+                        - (pdfViewerContainer.clientHeight / 2);
+                    var targetLeft = pdfViewerContainer.scrollLeft
+                        + targetPageRect.left
+                        - targetContainerRect.left
+                        + targetPoint[0]
+                        - (pdfViewerContainer.clientWidth / 2);
+
+                    pdfViewerContainer.scrollTo({
+                        top: Math.max(0, targetTop),
+                        left: Math.max(0, targetLeft),
+                        behavior: 'smooth'
+                    });
+
+                    return true;
+                }
+            }
         }
 
 
