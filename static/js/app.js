@@ -5117,6 +5117,19 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
         refreshPdfOverlayState();
 
+        var selectedOccurrence = occurrences[current];
+        var selectedPage = Number(selectedOccurrence.page);
+
+        if (
+            Number.isInteger(selectedPage)
+            && selectedPage >= 0
+            && typeof pdfPreviewState.viewer.scrollPageIntoView === 'function'
+        ) {
+            pdfPreviewState.viewer.scrollPageIntoView({
+                pageNumber: selectedPage + 1
+            });
+        }
+
 
         // Nie ustawiamy currentPageNumber.
         //
@@ -5210,32 +5223,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             ];
 
         var pageIndex = Number(occurrence.page);
-        var pdfBox = occurrence.pdf_bbox;
-
-        if (
-            Number.isInteger(pageIndex)
-            && pageIndex >= 0
-            && Array.isArray(pdfBox)
-            && pdfBox.length === 4
-            && typeof pdfPreviewState.viewer.scrollPageIntoView === 'function'
-        ) {
-            pdfPreviewState.viewer.scrollPageIntoView({
-                pageNumber: pageIndex + 1,
-                destArray: [
-                    null,
-                    { name: 'FitR' },
-                    pdfBox[0],
-                    pdfBox[1],
-                    pdfBox[2],
-                    pdfBox[3]
-                ],
-                allowNegativeOffset: true,
-                ignoreDestinationZoom: true,
-                center: 'both'
-            });
-
-            return true;
-        }
 
 
         // -----------------------------------------------------
