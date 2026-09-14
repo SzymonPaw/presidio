@@ -4,7 +4,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-from flask import Flask
+from flask import Flask, request
 
 from src.settings import (
     REQUIRED_GENERATED_DICTS,
@@ -140,6 +140,35 @@ def create_app() -> Flask:
     app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["ADMIN_DASHBOARD_TOKEN"] = ADMIN_DASHBOARD_TOKEN
+
+
+    @app.after_request
+    def add_security_headers(response):
+        """Dodaje naglowki ochronne do wszystkich odpowiedzi HTTP."""
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-XSS-Protection"] = "0"
+        response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+        response.headers["X-DNS-Prefetch-Control"] = "off"
+
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+        )
+
+        response.headers["Content-Security-Policy"] = (
+            "base-uri 'self'; "
+            "object-src 'none'; "
+            "frame-ancestors 'none'; "
+            "form-action 'self'"
+        )
+
+        if request.endpoint != "static":
+            response.headers["Cache-Control"] = "no-store, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+
+        return response
 
     # Rejestracja tras
     _register_routes(app)

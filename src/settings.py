@@ -24,7 +24,7 @@ def _get_env(key: str, default: str | None = None) -> str | None:
     return os.getenv(key, default)
 
 
-FLASK_DEBUG = _get_env("FLASK_DEBUG", "1") == "1"
+FLASK_DEBUG = _get_env("FLASK_DEBUG", "0") == "1"
 FLASK_PORT = int(_get_env("PORT", "5000"))
 FLASK_HOST = _get_env("HOST", "127.0.0.1")
 
