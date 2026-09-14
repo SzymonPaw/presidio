@@ -2464,7 +2464,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                             renderHeaders: true,
                             renderFooters: true,
                             renderFootnotes: true,
-                            renderEndnotes: true
+                            renderEndnotes: true,
+                            renderAltChunks: false
                         }
                     );
                     pdfViewerElement.dataset.docxOriginalHtml = pdfViewerElement.innerHTML;

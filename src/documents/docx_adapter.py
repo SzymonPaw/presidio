@@ -218,6 +218,30 @@ def validate_docx_structure(zf) -> None:
             "Plik DOCX jest zaszyfrowany. Anonimizacja jest niemożliwa."
         )
 
+    for part_name in names:
+        normalized_name = part_name.casefold()
+
+        if normalized_name.startswith("word/") and normalized_name.endswith(".xml"):
+            root = read_xml_part(zf, part_name)
+
+            if next(root.iter(f"{WNS}altChunk"), None) is not None:
+                raise SecurityError(
+                    "Dokument zawiera niedozwolony element altChunk."
+                )
+
+        if normalized_name.endswith(".rels"):
+            root = read_xml_part(zf, part_name)
+
+            for relationship in root.iter():
+                relationship_type = (
+                    relationship.get("Type") or ""
+                ).strip().casefold()
+
+                if relationship_type.endswith("/afchunk"):
+                    raise SecurityError(
+                        "Dokument zawiera niedozwoloną relację altChunk."
+                    )
+
 
 # ---------------------------------------------------------------------------
 # DocxAdapter
