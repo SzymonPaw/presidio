@@ -7,6 +7,62 @@ import pikepdf
 class PdfAdapter:
     """Adapter do analizy i anonimizacji dokumentow PDF z warstwa tekstowa."""
 
+    @staticmethod
+    def _footer_band_height(
+        page: fitz.Page,
+        footer_ratio: float = 0.08,
+        min_band_height: float = 24.0,
+        max_band_height: float = 80.0,
+    ) -> float:
+        page_rect = page.rect
+        return max(
+            min_band_height,
+            min(
+                max_band_height,
+                page_rect.height * footer_ratio,
+            ),
+        )
+
+    @staticmethod
+    def _redact_page_footer(
+        page: fitz.Page,
+        footer_ratio: float = 0.08,
+        min_band_height: float = 24.0,
+        max_band_height: float = 80.0,
+    ) -> bool:
+        """Redaguje wszystkie slowa z blokow stopki."""
+
+        page_rect = page.rect
+        band_height = PdfAdapter._footer_band_height(
+            page,
+            footer_ratio=footer_ratio,
+            min_band_height=min_band_height,
+            max_band_height=max_band_height,
+        )
+
+        if band_height <= 0:
+            return False
+
+        footer_rect = fitz.Rect(
+            page_rect.x0,
+            page_rect.y1 - band_height,
+            page_rect.x1,
+            page_rect.y1,
+        )
+
+        redacted = False
+        for word in page.get_text("words", clip=footer_rect, sort=True) or []:
+            if len(word) < 5:
+                continue
+
+            page.add_redact_annot(
+                fitz.Rect(word[:4]),
+                fill=(1, 1, 1),
+            )
+            redacted = True
+
+        return redacted
+
     def get_full_text(
         self,
         pdf_bytes: bytes,
@@ -304,11 +360,9 @@ class PdfAdapter:
             if raw and marker:
                 replacements[raw] = marker
 
-        if not replacements:
-            return working_bytes
-
         # ---------------------------------------------------
-        # Normalna anonimizacja tekstowa - tak jak dotychczas.
+        # Najpierw usuwamy stopke z dolnego pasa strony.
+        # Potem nakladamy zwykla anonimizacje tekstowa.
         # ---------------------------------------------------
 
         doc = fitz.open(
@@ -317,28 +371,33 @@ class PdfAdapter:
         )
 
         for page in doc:
-            for raw_value, marker in replacements.items():
-                hits = page.search_for(
-                    raw_value
-                )
+            has_redactions = self._redact_page_footer(page)
 
-                for rect in hits:
-                    page.add_redact_annot(
-                        quad=rect,
-                        text=marker,
-                        fontname="Helv",
-                        fontsize=max(
-                            4.0,
-                            rect.height * 0.75,
-                        ),
-                        align=fitz.TEXT_ALIGN_LEFT,
-                        fill=(1, 1, 1),
-                        text_color=(0, 0, 0),
+            if replacements:
+                for raw_value, marker in replacements.items():
+                    hits = page.search_for(
+                        raw_value
                     )
 
-            page.apply_redactions(
-                images=fitz.PDF_REDACT_IMAGE_NONE
-            )
+                    for rect in hits:
+                        has_redactions = True
+                        page.add_redact_annot(
+                            quad=rect,
+                            text=marker,
+                            fontname="Helv",
+                            fontsize=max(
+                                4.0,
+                                rect.height * 0.75,
+                            ),
+                            align=fitz.TEXT_ALIGN_LEFT,
+                            fill=(1, 1, 1),
+                            text_color=(0, 0, 0),
+                        )
+
+            if has_redactions:
+                page.apply_redactions(
+                    images=fitz.PDF_REDACT_IMAGE_NONE
+                )
 
         buf = io.BytesIO()
 
