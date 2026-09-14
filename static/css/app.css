@@ -949,6 +949,10 @@ h1 {
         ellipsis;
 }
 
+.pii-overlay-box.is-output-preview.is-hidden {
+    display: none;
+}
+
 .pii-overlay-box.is-output-preview.is-selected {
     border:
         3px solid
