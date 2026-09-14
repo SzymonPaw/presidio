@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="pl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="refresh" content="30">
+    <title>Dashboard administracyjny</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+    <main class="admin-dashboard">
+        <header class="admin-dashboard-header">
+            <div>
+                <p class="admin-eyebrow">Bez Śladu</p>
+                <h1>Dashboard administracyjny</h1>
+                <p class="admin-muted">Metryki anonimowych cykli anonimizacji. Odświeżanie co 30 sekund.</p>
+            </div>
+            <a class="btn btn-secondary" href="{{ url_for('health') }}">Sprawdź health</a>
+        </header>
+
+        <section class="admin-health {% if health.status == 'ok' %}is-ok{% else %}is-error{% endif %}">
+            <span class="admin-health-dot"></span>
+            <strong>Zdrowie aplikacji: {{ health.status }}</strong>
+            <span>{{ health.message }}</span>
+        </section>
+
+        <section class="admin-metrics-grid" aria-label="Najważniejsze metryki">
+            <article class="admin-metric-card">
+                <span>Pliki pobrane po anonimizacji</span>
+                <strong>{{ summary.downloaded_files }}</strong>
+            </article>
+            <article class="admin-metric-card">
+                <span>Średnie przygotowanie pliku</span>
+                <strong>{{ '%.2f'|format(summary.avg_preparation_seconds) }} s</strong>
+            </article>
+            <article class="admin-metric-card">
+                <span>Średni pełny cykl użytkownika</span>
+                <strong>{{ '%.2f'|format(summary.avg_full_cycle_seconds) }} s</strong>
+            </article>
+            <article class="admin-metric-card">
+                <span>Rozpoczęte cykle</span>
+                <strong>{{ summary.total_runs }}</strong>
+            </article>
+        </section>
+
+        <section class="admin-table-section">
+            <div class="admin-section-heading">
+                <h2>Ostatnie cykle</h2>
+                <span class="admin-muted">Dane techniczne, bez treści dokumentów</span>
+            </div>
+            <div class="admin-table-wrap">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Plik</th>
+                            <th>Typ</th>
+                            <th>Status</th>
+                            <th>Przygotowanie</th>
+                            <th>Pełny cykl</th>
+                            <th>Rozpoczęto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in summary.latest %}
+                        <tr>
+                            <td>{{ item.filename }}</td>
+                            <td>{{ item.file_type|upper }}</td>
+                            <td><span class="admin-status admin-status-{{ item.status }}">{{ item.status }}</span></td>
+                            <td>{{ '%.2f'|format(item.preparation_seconds or 0) }} s</td>
+                            <td>{{ '%.2f'|format(item.full_cycle_seconds or 0) }} s</td>
+                            <td>{{ item.uploaded_at }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" class="admin-empty">Brak zarejestrowanych cykli.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

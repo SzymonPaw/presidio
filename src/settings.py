@@ -1,5 +1,6 @@
 """Ustawienia aplikacji odczytywane ze zmiennych srodowiskowych."""
 import os
+import hashlib
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -71,6 +72,10 @@ ZIP_MAX_RATIO = 50  # Max 50x kompresji
 # Inne ustawienia
 # ---------------------------------------------------------------------------
 SECRET_KEY = _get_env("SECRET_KEY", "dev-secret-change-in-production")
+ADMIN_DASHBOARD_TOKEN = _get_env(
+    "ADMIN_DASHBOARD_TOKEN",
+    "admin-" + hashlib.sha256(SECRET_KEY.encode("utf-8")).hexdigest()[:24],
+)
 
 
 def ensure_directories() -> None:

@@ -457,7 +457,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     confirmed_ids: (item.findings || []).filter(function (finding) {
                         return finding.enabled !== false;
                     }).map(function (finding) { return String(finding.id); }),
-                    manual_findings: getManualFindingsForRequest(item)
+                    manual_findings: getManualFindingsForRequest(item),
+                    metrics_run_id: item.metricsRunId || null
                 };
             });
             formData.append('settings', JSON.stringify(settings));
@@ -471,6 +472,17 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 })
                 .then(function (blob) {
                     downloadBlob(blob, 'anonimizacje.zip');
+                    var completedMetricsRunIds = readyDocuments
+                        .map(function (item) { return item.metricsRunId; })
+                        .filter(Boolean);
+                    if (completedMetricsRunIds.length) {
+                        navigator.sendBeacon(
+                            '/metrics/downloaded',
+                            new Blob([
+                                JSON.stringify({ run_ids: completedMetricsRunIds })
+                            ], { type: 'application/json' })
+                        );
+                    }
                     readyDocuments.forEach(function (item) { item.status = 'Pobrany'; });
                     renderDocumentList();
                     statusDiv.textContent = 'Anonimizacja zakończona. Pliki zostały pobrane.';
@@ -504,6 +516,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                         .then(function (data) {
                             if (data.error) throw new Error(data.error);
                             document.findings = data.findings || [];
+                            document.metricsRunId = data.metrics_run_id || null;
                             document.analyzed = true;
                             document.status = 'Gotowy';
                         })
@@ -1286,6 +1299,16 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     JSON.stringify(manualFindings)
                 );
 
+                if (
+                    documents[currentDocumentIndex]
+                    && documents[currentDocumentIndex].metricsRunId
+                ) {
+                    formData.append(
+                        'metrics_run_id',
+                        documents[currentDocumentIndex].metricsRunId
+                    );
+                }
+
                 var downloadFilename = null;
 
                 fetch('/anonymize', {
@@ -1441,6 +1464,18 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                     document.body.appendChild(a);
 
                     a.click();
+
+                    var completedMetricsRunId = documents[currentDocumentIndex]
+                        ? documents[currentDocumentIndex].metricsRunId
+                        : null;
+                    if (completedMetricsRunId) {
+                        navigator.sendBeacon(
+                            '/metrics/downloaded',
+                            new Blob([
+                                JSON.stringify({ run_id: completedMetricsRunId })
+                            ], { type: 'application/json' })
+                        );
+                    }
 
                     a.remove();
 

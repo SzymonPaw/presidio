@@ -16,6 +16,7 @@ from src.settings import (
     FLASK_DEBUG,
     MAX_CONTENT_LENGTH,
     SECRET_KEY,
+    ADMIN_DASHBOARD_TOKEN,
 )
 
 
@@ -113,7 +114,6 @@ def _print_missing_files_hint(missing_source: list[str], missing_dicts: list[str
     print("\n" + "=" * 60)
     sys.exit(1)
 
-
 # ---------------------------------------------------------------------------
 # Fabryka aplikacji
 # ---------------------------------------------------------------------------
@@ -139,6 +139,7 @@ def create_app() -> Flask:
     app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
     app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["ADMIN_DASHBOARD_TOKEN"] = ADMIN_DASHBOARD_TOKEN
 
     # Rejestracja tras
     _register_routes(app)
@@ -177,11 +178,16 @@ def _register_routes(app: Flask) -> None:
     from src.documents.metadata_sanitizer import (
         sanitize_document_metadata,
     )
+    from src.metrics.store import MetricsStore
 
     pdf_adapter = PdfAdapter()
     docx_adapter = DocxAdapter()
     xlsx_adapter = XlsxAdapter()
     anonymizer_service = AnonymizationService()
+    metrics_store = MetricsStore(DATABASE_URL)
+
+    def _health_payload() -> dict[str, str]:
+        return {"status": "ok", "message": "Anonimizator dziala"}
 
     @app.route("/")
     def index():
@@ -189,7 +195,30 @@ def _register_routes(app: Flask) -> None:
 
     @app.route("/health")
     def health():
-        return {"status": "ok", "message": "Anonimizator dziala"}
+        return _health_payload()
+
+    @app.route(f"/admin/{ADMIN_DASHBOARD_TOKEN}")
+    def admin_dashboard():
+        return render_template(
+            "admin_dashboard.html",
+            summary=metrics_store.summary(),
+            health=_health_payload(),
+        )
+
+    @app.route("/metrics/downloaded", methods=["POST"])
+    def metrics_downloaded():
+        payload = request.get_json(silent=True) or {}
+        run_ids = payload.get("run_ids", [])
+        if not isinstance(run_ids, list):
+            run_ids = []
+        run_id = str(payload.get("run_id", "")).strip()
+        if run_id:
+            run_ids.append(run_id)
+        for item in run_ids:
+            normalized_id = str(item).strip()
+            if normalized_id:
+                metrics_store.mark_downloaded(normalized_id)
+        return jsonify({"ok": True})
 
     def _get_findings_for_file(file_bytes: bytes, filename: str) -> list[dict]:
         """Ekstrahuje findings z pliku i grupuje je."""
@@ -254,7 +283,6 @@ def _register_routes(app: Flask) -> None:
                     and f[field] is not None
                 ):
                     occurrence[field] = f[field]
-
             if key not in grouped:
                 grouped[key] = {
                     "entity_type": f["entity_type"],
@@ -404,9 +432,13 @@ def _register_routes(app: Flask) -> None:
         file_bytes = file.read()
 
         try:
+            run_id = metrics_store.start_run(file.filename)
             findings = _get_findings_for_file(file_bytes, file.filename)
-            return jsonify({"findings": findings})
+            metrics_store.mark_analysis_completed(run_id)
+            return jsonify({"findings": findings, "metrics_run_id": run_id})
         except Exception as exc:
+            if "run_id" in locals():
+                metrics_store.mark_failed(run_id)
             return jsonify({"error": f"Blad podczas analizy: {str(exc)}"}), 500
 
     @app.route("/preview-docx", methods=["POST"])
@@ -494,6 +526,10 @@ def _register_routes(app: Flask) -> None:
         except Exception:
             return jsonify({"error": "Niepoprawny format confirmed_ids"}), 400
 
+        metrics_run_id = request.form.get("metrics_run_id", "").strip()
+        if metrics_run_id:
+            metrics_store.mark_preparation_started(metrics_run_id)
+
         file_bytes = file.read()
 
         try:
@@ -573,7 +609,6 @@ def _register_routes(app: Flask) -> None:
                 file.filename,
             )
 
-
             out_io = io.BytesIO(
                 out_bytes
             )
@@ -590,6 +625,8 @@ def _register_routes(app: Flask) -> None:
             )
             
         except Exception as exc:
+            if metrics_run_id:
+                metrics_store.mark_failed(metrics_run_id)
             return jsonify({"error": f"Blad podczas anonimizacji: {str(exc)}"}), 500
 
     @app.route("/anonymize-all", methods=["POST"])
@@ -620,6 +657,9 @@ def _register_routes(app: Flask) -> None:
                         filename = f"plik_{index + 1}"
 
                     item_settings = settings_by_index.get(str(index), {})
+                    metrics_run_id = str(item_settings.get("metrics_run_id", "")).strip()
+                    if metrics_run_id:
+                        metrics_store.mark_preparation_started(metrics_run_id)
                     confirmed_ids = {
                         str(value)
                         for value in item_settings.get("confirmed_ids", [])
