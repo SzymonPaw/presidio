@@ -1954,8 +1954,25 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         var fileForPreview =
             await getPdfPreviewBlob();
 
+        var requestedPreviewMode = pdfPreviewState.previewMode || 'detections';
 
         resetPdfPreview();
+
+        pdfPreviewState.previewMode = requestedPreviewMode;
+
+        if (previewModeDetectionsBtn) {
+            previewModeDetectionsBtn.classList.toggle(
+                'is-active',
+                requestedPreviewMode === 'detections'
+            );
+        }
+
+        if (previewModeOutputBtn) {
+            previewModeOutputBtn.classList.toggle(
+                'is-active',
+                requestedPreviewMode === 'output'
+            );
+        }
 
 
         var eventBus =
@@ -3606,6 +3623,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         layer.className =
             'pii-overlay-layer';
 
+        var outputMode =
+            (pdfPreviewState.previewMode || 'detections') === 'output';
+
 
         currentFindings.forEach(
             function (finding) {
@@ -3647,14 +3667,16 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                         var pdfBox =
                             occurrence.pdf_bbox;
 
-                        var textLayerRect = findPdfTextSpanRect(
-                            pageView,
-                            finding.raw_value,
-                            pdfBox,
-                            occurrences.slice(0, occurrenceIndex).filter(function (item) {
-                                return Number(item.page) === pageIndex;
-                            }).length
-                        );
+                        var textLayerRect = outputMode
+                            ? null
+                            : findPdfTextSpanRect(
+                                pageView,
+                                finding.raw_value,
+                                pdfBox,
+                                occurrences.slice(0, occurrenceIndex).filter(function (item) {
+                                    return Number(item.page) === pageIndex;
+                                }).length
+                            );
 
                         var left;
                         var top;
