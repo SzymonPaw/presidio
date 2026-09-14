@@ -5217,44 +5217,24 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             && pageIndex >= 0
             && Array.isArray(pdfBox)
             && pdfBox.length === 4
+            && typeof pdfPreviewState.viewer.scrollPageIntoView === 'function'
         ) {
-            var targetPageView = pdfPreviewState.viewer.getPageView(pageIndex);
+            pdfPreviewState.viewer.scrollPageIntoView({
+                pageNumber: pageIndex + 1,
+                destArray: [
+                    null,
+                    { name: 'FitR' },
+                    pdfBox[0],
+                    pdfBox[1],
+                    pdfBox[2],
+                    pdfBox[3]
+                ],
+                allowNegativeOffset: true,
+                ignoreDestinationZoom: true,
+                center: 'both'
+            });
 
-            if (
-                targetPageView
-                && targetPageView.div
-                && targetPageView.div.isConnected
-                && targetPageView.viewport
-                && targetPageView.renderingState === 3
-            ) {
-                var targetContainerRect = pdfViewerContainer.getBoundingClientRect();
-                var targetPageRect = targetPageView.div.getBoundingClientRect();
-                var targetPoint = targetPageView.viewport.convertToViewportPoint(
-                    (pdfBox[0] + pdfBox[2]) / 2,
-                    (pdfBox[1] + pdfBox[3]) / 2
-                );
-
-                if (targetPageRect.height && targetPageRect.width) {
-                    var targetTop = pdfViewerContainer.scrollTop
-                        + targetPageRect.top
-                        - targetContainerRect.top
-                        + targetPoint[1]
-                        - (pdfViewerContainer.clientHeight / 2);
-                    var targetLeft = pdfViewerContainer.scrollLeft
-                        + targetPageRect.left
-                        - targetContainerRect.left
-                        + targetPoint[0]
-                        - (pdfViewerContainer.clientWidth / 2);
-
-                    pdfViewerContainer.scrollTo({
-                        top: Math.max(0, targetTop),
-                        left: Math.max(0, targetLeft),
-                        behavior: 'smooth'
-                    });
-
-                    return true;
-                }
-            }
+            return true;
         }
 
 
@@ -5373,7 +5353,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             !pageView
             || !pageView.div
             || !pageView.div.isConnected
-            || pageView.renderingState !== 3
         ) {
             if (
                 pdfPreviewState.viewer
