@@ -2558,6 +2558,55 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         });
     }
 
+    function waitForPdfFindingPage(findingId) {
+        var finding = getFindingById(findingId);
+        var occurrences = getFindingOccurrences(finding);
+        var current = pdfPreviewState.occurrenceIndex[findingId] || 0;
+        var occurrence = occurrences[current];
+        var pageNumber = occurrence ? Number(occurrence.page) + 1 : 0;
+
+        if (!pageNumber || !pdfPreviewState.eventBus || !pdfPreviewState.viewer) {
+            return Promise.resolve(false);
+        }
+
+        return new Promise(function (resolve) {
+            var settled = false;
+            var timeoutId = null;
+
+            function finish(result) {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                clearTimeout(timeoutId);
+                pdfPreviewState.eventBus.off('pagerendered', onPageRendered);
+                resolve(result);
+            }
+
+            function onPageRendered(event) {
+                if (event.pageNumber === pageNumber) {
+                    requestAnimationFrame(function () {
+                        finish(true);
+                    });
+                }
+            }
+
+            pdfPreviewState.eventBus.on('pagerendered', onPageRendered);
+
+            var pageView = pdfPreviewState.viewer.getPageView(pageNumber - 1);
+            if (pageView && pageView.div && pageView.div.isConnected && pageView.renderingState === 3) {
+                requestAnimationFrame(function () {
+                    finish(true);
+                });
+                return;
+            }
+
+            timeoutId = setTimeout(function () {
+                finish(false);
+            }, 5000);
+        });
+    }
+
     async function openPdfPreview(
         findingId
     ) {
@@ -2605,9 +2654,23 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             renderPdfFindingsSidebar();
 
             if (findingId) {
+                var findingPageReady = waitForPdfFindingPage(findingId);
                 focusPdfFinding(
                     findingId
                 );
+                await findingPageReady;
+                var focusedFinding = getFindingById(findingId);
+                var focusedOccurrences = getFindingOccurrences(focusedFinding);
+                var focusedOccurrence = focusedOccurrences[
+                    pdfPreviewState.occurrenceIndex[findingId] || 0
+                ];
+
+                if (focusedOccurrence) {
+                    renderPdfOverlayForPage(
+                        Number(focusedOccurrence.page)
+                    );
+                    scrollToSelectedPdfBox();
+                }
             }
 
 
