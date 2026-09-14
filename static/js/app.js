@@ -769,6 +769,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 renderPdfOverlayForPage(pdfPreviewState.viewer.currentPageNumber - 1);
             }
             refreshPdfOverlayState();
+            renderFindings(currentFindings);
             return;
         }
 
@@ -1198,7 +1199,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         // Event listener dla Zatwierdź
         var manualMainShowButtons = findingsDiv.querySelectorAll('.manual-show-main');
         manualMainShowButtons.forEach(function (button) {
-            button.addEventListener('click', function () {
+            button.addEventListener('click', async function () {
                 var manualId = button.getAttribute('data-manual-id');
                 var manualFinding = getCurrentManualFindings().find(function (entry) {
                     return String(entry.id) === String(manualId);
@@ -1209,6 +1210,18 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 }
 
                 if (isSelectedFilePdf()) {
+                    if (!modalIsOpen) {
+                        await openPdfPreview(null);
+                    }
+
+                    var manualPage = Number(manualFinding.pdf_page);
+                    if (Number.isInteger(manualPage) && manualPage >= 0) {
+                        pdfPreviewState.viewer.scrollPageIntoView({
+                            pageNumber: manualPage + 1
+                        });
+                        await waitForPdfPageRendered(manualPage + 1);
+                    }
+
                     focusManualPdfFinding(manualFinding.id);
                     return;
                 }
@@ -2607,6 +2620,49 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         });
     }
 
+    function waitForPdfPageRendered(pageNumber) {
+        if (!pageNumber || !pdfPreviewState.eventBus || !pdfPreviewState.viewer) {
+            return Promise.resolve(false);
+        }
+
+        return new Promise(function (resolve) {
+            var settled = false;
+            var timeoutId = null;
+
+            function finish(result) {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                clearTimeout(timeoutId);
+                pdfPreviewState.eventBus.off('pagerendered', onPageRendered);
+                resolve(result);
+            }
+
+            function onPageRendered(event) {
+                if (event.pageNumber === pageNumber) {
+                    requestAnimationFrame(function () {
+                        finish(true);
+                    });
+                }
+            }
+
+            pdfPreviewState.eventBus.on('pagerendered', onPageRendered);
+
+            var pageView = pdfPreviewState.viewer.getPageView(pageNumber - 1);
+            if (pageView && pageView.div && pageView.div.isConnected && pageView.renderingState === 3) {
+                requestAnimationFrame(function () {
+                    finish(true);
+                });
+                return;
+            }
+
+            timeoutId = setTimeout(function () {
+                finish(false);
+            }, 5000);
+        });
+    }
+
     async function openPdfPreview(
         findingId
     ) {
@@ -3263,7 +3319,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         pdfPreviewState.selectedFindingId = null;
 
         if (pdfPreviewState.viewer && Number.isInteger(Number(manualFinding.pdf_page))) {
-            renderPdfOverlayForPage(Number(manualFinding.pdf_page));
+            var manualPage = Number(manualFinding.pdf_page);
+            pdfPreviewState.viewer.scrollPageIntoView({
+                pageNumber: manualPage + 1
+            });
+            renderPdfOverlayForPage(manualPage);
         }
 
         renderPdfFindingsSidebar();
