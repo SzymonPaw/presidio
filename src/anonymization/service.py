@@ -51,19 +51,33 @@ class AnonymizationService:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         all_findings: List[Dict[str, Any]] = []
 
-        for page_num, page in enumerate(doc):
-            text = page.get_text()
-            results = self.analyzer.analyze(text)
+        try:
+            for page_num, page in enumerate(doc):
+                text = page.get_text()
+                results = self.analyzer.analyze(text)
+                hits_by_value: Dict[str, List[Any]] = {}
+                grouped_indexes: Dict[str, int] = {}
 
-            for r in results:
-                raw_value = text[r.start : r.end]
-                hits = page.search_for(raw_value)
-                bbox = tuple(hits[0]) if hits else None
-                all_findings.append(
-                    self._make_finding(r.entity_type, raw_value, r.score, page_num, bbox)
-                )
+                for r in results:
+                    raw_value = text[r.start : r.end]
+                    if not raw_value:
+                        continue
 
-        doc.close()
+                    if raw_value not in hits_by_value:
+                        hits_by_value[raw_value] = page.search_for(raw_value)
+
+                    occurrence_index = grouped_indexes.get(raw_value, 0)
+                    grouped_indexes[raw_value] = occurrence_index + 1
+
+                    hit_list = hits_by_value.get(raw_value, [])
+                    bbox = tuple(hit_list[occurrence_index]) if occurrence_index < len(hit_list) else None
+
+                    all_findings.append(
+                        self._make_finding(r.entity_type, raw_value, r.score, page_num, bbox)
+                    )
+        finally:
+            doc.close()
+
         return all_findings
 
     # ------------------------------------------------------------------
