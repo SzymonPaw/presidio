@@ -193,6 +193,11 @@ def _register_routes(app: Flask) -> None:
     def index():
         return render_template("index.html")
 
+    @app.route("/polityka-prywatnosci/")
+    @app.route("/polityka-prywatnosci")
+    def privacy_policy():
+        return render_template("privacy_policy.html")
+
     @app.route("/health")
     def health():
         return _health_payload()

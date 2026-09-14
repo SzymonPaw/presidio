@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <title>Polityka prywatności | Bez Śladu</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+    <meta name="robots" content="noindex">
+    <link
+        rel="shortcut icon"
+        href="/static/img/favicon.webp"
+        type="image/x-icon"
+    >
+
+    <style>
+        :root {
+        --ink: #172033;
+        --muted: #5e6879;
+        --brand: #0b5b78;
+        --brand-dark: #083f54;
+        --accent: #e9f5f8;
+        --line: #d9e2e8;
+        --surface: #ffffff;
+        --page: #f4f7f9;
+        --notice: #fff8e6;
+        --notice-line: #e1b84b;
+        }
+
+        * { box-sizing: border-box; }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--page);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+            "Segoe UI", sans-serif;
+        font-size: 16px;
+        line-height: 1.65;
+        }
+
+        a { color: var(--brand-dark); }
+        a:hover { text-decoration-thickness: 2px; }
+
+        .page {
+        width: min(1080px, calc(100% - 32px));
+        margin: 34px auto;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        box-shadow: 0 16px 42px rgba(26, 48, 65, 0.09);
+        overflow: hidden;
+        }
+
+        header {
+                margin-top: 75px;
+            border-radius: 10px; 
+        padding: 48px 56px 40px;
+        color: #fff;
+        background: linear-gradient(135deg, var(--brand-dark), var(--brand));
+        }
+
+        header p { max-width: 760px; margin: 12px 0 0; color: #dff3f8; }
+
+        h1 {
+            color: #fff;
+        margin: 0;
+        font-size: clamp(2rem, 5vw, 3.3rem);
+        line-height: 1.08;
+        letter-spacing: -0.035em;
+        }
+
+        h2 {
+        margin: 48px 0 14px;
+        color: var(--brand-dark);
+        font-size: 1.5rem;
+        line-height: 1.3;
+        }
+
+        h3 {
+        margin: 28px 0 10px;
+        font-size: 1.08rem;
+        line-height: 1.4;
+        }
+
+        p { margin: 0 0 14px; }
+
+        ul, ol { margin: 8px 0 18px; padding-left: 24px; }
+        li + li { margin-top: 7px; }
+
+        .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 24px;
+        margin-top: 24px;
+        font-size: 0.94rem;
+        }
+
+        .meta span {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        }
+
+        .content { 
+            padding: 0;
+            margin: 15px 0;
+        }
+
+        .lead {
+        margin: 0 0 28px;
+        padding: 22px 24px;
+        border-left: 5px solid var(--brand);
+        border-radius: 10px;
+        background: var(--accent);
+        font-size: 1.03rem;
+        }
+
+        .summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+        margin: 24px 0 34px;
+        }
+
+        .summary article {
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fbfdfe;
+        }
+
+        .summary strong { display: block; margin-bottom: 4px; color: var(--brand-dark); }
+        .summary p { margin: 0; color: var(--muted); font-size: 0.94rem; }
+
+        nav {
+        margin: 0 0 36px;
+        padding: 22px 24px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        }
+
+        nav strong { display: block; margin-bottom: 8px; }
+        nav ol { columns: 2; column-gap: 40px; margin-bottom: 0; }
+        nav li { break-inside: avoid; }
+
+        .table-wrap {
+        margin: 18px 0 26px;
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        }
+
+        table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 760px;
+        font-size: 0.94rem;
+        }
+
+        th, td {
+        padding: 14px 16px;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid var(--line);
+        }
+
+        th { color: var(--brand-dark); background: var(--accent); font-weight: 700; }
+        tr:last-child td { border-bottom: 0; }
+
+        .notice {
+        margin: 22px 0;
+        padding: 18px 20px;
+        border-left: 5px solid var(--notice-line);
+        border-radius: 10px;
+        background: var(--notice);
+        }
+
+        .contact-card {
+        padding: 22px 24px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fbfdfe;
+        }
+
+        .contact-card p:last-child { margin-bottom: 0; }
+
+        footer {
+        padding: 26px 56px 32px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        background: #f8fafb;
+        font-size: 0.9rem;
+        }
+
+        footer p:last-child { margin-bottom: 0; }
+
+        @media (max-width: 760px) {
+        .page { width: 100%; margin: 0; border: 0; border-radius: 0; }
+        header, .content, footer { padding-left: 22px; padding-right: 22px; }
+        header { padding-top: 34px; }
+        .summary { grid-template-columns: 1fr; }
+        nav ol { columns: 1; }
+        }
+
+        @media print {
+        @page { size: A4; margin: 16mm; }
+        body { background: #fff; font-size: 10.5pt; }
+        .page { width: 100%; margin: 0; border: 0; box-shadow: none; }
+        header { padding: 24px 28px; background: #fff; color: var(--ink); border-bottom: 2px solid var(--brand); }
+        header p { color: var(--muted); }
+        .content { padding: 18px 28px 24px; }
+        footer { padding: 18px 28px; }
+        h1 { font-size: 24pt; }
+        h2 { margin-top: 28px; break-after: avoid; }
+        h3, .lead, .notice, .contact-card, table { break-inside: avoid; }
+        a { color: inherit; text-decoration: none; }
+        nav { display: none; }
+        }
+    </style>
+
+</head>
+<body>
+    <div class="container">
+        <div class="header--logo" style="margin-bottom: 2rem;">
+            <a href="/"><img src="{{ url_for('static', filename='img/logo.webp') }}" alt="Logo STBU" class="logo"></a>
+            <a href="/"><img src="{{ url_for('static', filename='img/logo-stbu.webp') }}" alt="Logo STBU" class="logo"></a>
+        </div>
+
+        <header>
+        <h1>Polityka prywatności aplikacji Bez Śladu</h1>
+        <p>Informacja o przetwarzaniu danych osobowych w wewnętrznej aplikacji do anonimizacji dokumentów.</p>
+        <div class="meta" aria-label="Metryka dokumentu">
+            <span><strong>Obowiązuje od:</strong> 14 września 2026 r.</span>
+            <span><strong>Dostęp:</strong> wyłącznie pracownicy przez VPN</span>
+        </div>
+        </header>
+
+        <div class="content">
+        <p class="lead">
+            Aplikacja Presidio służy do wykrywania i anonimizowania danych w plikach PDF, DOCX i XLSX.
+            Działa regułowo, bez wykorzystywania modeli sztucznej inteligencji. Treść dokumentów nie jest
+            używana do trenowania modeli, celów marketingowych ani profilowania. Aplikacja nie jest publicznie
+            dostępna - mogą z niej korzystać wyłącznie upoważnieni pracownicy po połączeniu z firmową siecią VPN.
+        </p>
+
+        <section class="summary" aria-label="Najważniejsze informacje">
+            <article>
+            <strong>Pliki bez trwałego zapisu</strong>
+            <p>Kod aplikacji nie zapisuje treści plików ani wykrytych wartości w trwałej bazie danych.</p>
+            </article>
+            <article>
+            <strong>Minimalne metryki</strong>
+            <p>Zapisywane są dane techniczne procesu, w tym nazwa i typ pliku, status oraz czas operacji.</p>
+            </article>
+            <article>
+            <strong>Kontrola użytkownika</strong>
+            <p>Użytkownik weryfikuje wykrycia i decyduje, które elementy mają zostać zanonimizowane.</p>
+            </article>
+        </section>
+
+        <nav aria-label="Spis treści">
+            <strong>Spis treści</strong>
+            <ol>
+            <li><a href="#zakres">Zakres polityki</a></li>
+            <li><a href="#administrator">Administrator i IOD</a></li>
+            <li><a href="#dzialanie">Jak działa aplikacja</a></li>
+            <li><a href="#dane">Zakres danych</a></li>
+            <li><a href="#cele">Cele i podstawy prawne</a></li>
+            <li><a href="#zrodla">Źródła danych</a></li>
+            <li><a href="#retencja">Okresy przechowywania</a></li>
+            <li><a href="#odbiorcy">Odbiorcy danych</a></li>
+            <li><a href="#transfery">Transfery poza EOG</a></li>
+            <li><a href="#cookies">Pliki cookie</a></li>
+            <li><a href="#decyzje">Automatyczne decyzje</a></li>
+            <li><a href="#prawa">Prawa osób</a></li>
+            <li><a href="#bezpieczenstwo">Bezpieczeństwo</a></li>
+            <li><a href="#odpowiedzialnosc">Zasady korzystania</a></li>
+            <li><a href="#zmiany">Zmiany polityki</a></li>
+            </ol>
+        </nav>
+
+        <section id="zakres">
+            <h2>1. Zakres polityki</h2>
+            <p>
+            Polityka dotyczy danych osobowych przetwarzanych podczas korzystania z wewnętrznej aplikacji
+            Presidio („Aplikacja”), w szczególności danych pracowników korzystających z Aplikacji, danych
+            technicznych związanych z dostępem oraz danych zawartych w dokumentach przekazywanych do analizy
+            i anonimizacji.
+            </p>
+            <p>
+            Aplikacja jest narzędziem wspierającym procesy prowadzone przez Administratora. Niniejsza polityka
+            nie zastępuje klauzul informacyjnych dotyczących pierwotnego celu przetwarzania danych zawartych
+            w dokumentach, na przykład obsługi klienta, wykonywania działalności brokerskiej, zawarcia lub
+            realizacji umowy, likwidacji szkody, obowiązków pracowniczych albo dochodzenia roszczeń.
+            </p>
+        </section>
+
+        <section id="administrator">
+            <h2>2. Administrator danych i kontakt z IOD</h2>
+            <div class="contact-card">
+            <p>
+                Administratorem danych osobowych jest <strong>STBU Brokerzy Ubezpieczeniowi sp. z o.o.</strong>
+                z siedzibą w Sopocie, ul. Rzemieślnicza 33, 81-855 Sopot, wpisana do rejestru przedsiębiorców
+                Krajowego Rejestru Sądowego pod numerem KRS 0000090358, NIP 585-13-40-951,
+                REGON 191640955 („Administrator” lub „STBU”).
+            </p>
+            <p>
+                Z Administratorem można skontaktować się pisemnie na powyższy adres, telefonicznie pod numerem
+                58 555 82 00 lub pocztą elektroniczną: <a href="mailto:stbu@stbu.pl">stbu@stbu.pl</a>.
+            </p>
+            <p>
+                W sprawach dotyczących ochrony danych osobowych można skontaktować się z Inspektorem Ochrony
+                Danych pod adresem: <a href="mailto:iod@stbu.pl">iod@stbu.pl</a> albo pisemnie na adres siedziby
+                Administratora z dopiskiem „Inspektor Ochrony Danych”.
+            </p>
+            </div>
+        </section>
+
+        <section id="dzialanie">
+            <h2>3. Jak działa Aplikacja</h2>
+            <ol>
+            <li>Upoważniony pracownik wybiera plik PDF, DOCX lub XLSX na swoim urządzeniu.</li>
+            <li>Plik jest przesyłany szyfrowanym połączeniem do serwera Aplikacji w celu analizy.</li>
+            <li>Regułowy mechanizm wskazuje potencjalne dane osobowe i przedstawia je pracownikowi do weryfikacji.</li>
+            <li>Pracownik zatwierdza, odznacza albo ręcznie dodaje elementy przeznaczone do anonimizacji.</li>
+            <li>Aplikacja tworzy zanonimizowany plik, usuwa standardowe metadane dokumentu i zwraca wynik do pobrania.</li>
+            </ol>
+            <p>
+            Oryginalny dokument, jego podgląd, wykryte wartości oraz plik wynikowy są przetwarzane na potrzeby
+            bieżącego żądania. Kod Aplikacji nie zapisuje ich w bazie metryk ani w repozytorium dokumentów.
+            Dane mogą krótkotrwale znajdować się w pamięci urządzenia użytkownika, pamięci serwera oraz w
+            kontrolowanych plikach tymczasowych warstwy serwera aplikacyjnego lub infrastruktury, jeżeli są
+            one niezbędne do obsługi transmisji.
+            </p>
+        </section>
+
+        <section id="dane">
+            <h2>4. Jakie dane przetwarzamy</h2>
+            <div class="table-wrap" role="region" aria-label="Kategorie przetwarzanych danych" tabindex="0">
+            <table>
+                <thead>
+                <tr>
+                    <th>Kategoria</th>
+                    <th>Przykłady</th>
+                    <th>Sposób przetwarzania</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td>Treść dokumentów</td>
+                    <td>
+                    Imiona i nazwiska, firmy, adresy i lokalizacje, adresy e-mail, telefony, PESEL, NIP,
+                    REGON, KRS, rachunki i IBAN, tablice rejestracyjne, numery dokumentów tożsamości,
+                    polis i szkód oraz inne informacje znajdujące się w pliku.
+                    </td>
+                    <td>Analiza, podgląd, wybór elementów i anonimizacja w ramach bieżącej operacji.</td>
+                </tr>
+                <tr>
+                    <td>Dane szczególnych kategorii i dane z art. 10 RODO</td>
+                    <td>
+                    W zależności od dokumentu: informacje o zdrowiu, niepełnosprawności, roszczeniach,
+                    wypadkach albo wyrokach skazujących i naruszeniach prawa.
+                    </td>
+                    <td>
+                    Tylko jeżeli występują w dokumencie i ich przetwarzanie w pierwotnym procesie jest zgodne
+                    z prawem oraz niezbędne.
+                    </td>
+                </tr>
+                <tr>
+                    <td>Wyniki analizy</td>
+                    <td>Typ wykrycia, wartość, znacznik zastępczy, liczba wystąpień, położenie w dokumencie i ocena reguły.</td>
+                    <td>Przedstawienie pracownikowi do weryfikacji; bez trwałego zapisu przez kod Aplikacji.</td>
+                </tr>
+                <tr>
+                    <td>Metryki procesu</td>
+                    <td>
+                    Losowy identyfikator operacji, oryginalna nazwa i rozszerzenie pliku, znaczniki czasu,
+                    status operacji oraz czas przygotowania i pełnego cyklu.
+                    </td>
+                    <td>Trwały zapis w wewnętrznej bazie metryk; bez zapisu treści dokumentu i wykrytych wartości.</td>
+                </tr>
+                <tr>
+                    <td>Dane techniczne i bezpieczeństwa</td>
+                    <td>
+                    Adres IP, czas połączenia, identyfikator lub konto służbowe - jeżeli stosowane przez warstwę
+                    dostępową - typ przeglądarki, żądany zasób, status odpowiedzi oraz informacje o błędzie.
+                    </td>
+                    <td>Logi VPN, serwera, zapory, reverse proxy lub innych firmowych systemów bezpieczeństwa.</td>
+                </tr>
+                </tbody>
+            </table>
+            </div>
+            <p>
+            Nazwa pliku może sama zawierać dane osobowe. Użytkownicy powinni w miarę możliwości stosować nazwy
+            neutralne, które nie identyfikują klientów, pracowników ani innych osób.
+            </p>
+        </section>
+
+        <section id="cele">
+            <h2>5. Cele i podstawy prawne przetwarzania</h2>
+            <div class="table-wrap" role="region" aria-label="Cele i podstawy prawne" tabindex="0">
+            <table>
+                <thead>
+                <tr>
+                    <th>Cel</th>
+                    <th>Zakres danych</th>
+                    <th>Podstawa prawna</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td>Analiza i anonimizacja dokumentów w ramach procesu, dla którego dokument został zgromadzony</td>
+                    <td>Treść dokumentu, wyniki analizy, wybory użytkownika</td>
+                    <td>
+                    Podstawa właściwa dla pierwotnego procesu, wskazana osobie w dotyczącej go klauzuli
+                    informacyjnej, w szczególności art. 6 ust. 1 lit. b, c lub f RODO. Aplikacja nie tworzy
+                    nowego, niezgodnego celu wykorzystania danych.
+                    </td>
+                </tr>
+                <tr>
+                    <td>Przetwarzanie danych szczególnych kategorii lub danych dotyczących wyroków i naruszeń prawa</td>
+                    <td>Dane występujące w dokumencie źródłowym</td>
+                    <td>
+                    Właściwa przesłanka z art. 9 ust. 2 RODO - gdy jest wymagana - albo art. 10 RODO wraz
+                    z odpowiednią podstawą prawa krajowego. Przykładowo może to być wyraźna zgoda lub
+                    niezbędność do ustalenia, dochodzenia lub obrony roszczeń, zależnie od danego procesu.
+                    </td>
+                </tr>
+                <tr>
+                    <td>Zapewnienie działania, rozliczalności, diagnostyka i doskonalenie Aplikacji</td>
+                    <td>Metryki procesu</td>
+                    <td>
+                    Art. 6 ust. 1 lit. f RODO - prawnie uzasadniony interes Administratora polegający na
+                    utrzymaniu niezawodnego i mierzalnego narzędzia wewnętrznego oraz poprawie jego działania.
+                    </td>
+                </tr>
+                <tr>
+                    <td>Zarządzanie dostępem, zapobieganie nadużyciom, wykrywanie incydentów i ochrona informacji</td>
+                    <td>Dane techniczne i bezpieczeństwa</td>
+                    <td>
+                    Art. 6 ust. 1 lit. f RODO - prawnie uzasadniony interes Administratora polegający na
+                    ochronie systemów, danych, tajemnicy przedsiębiorstwa i ustalaniu odpowiedzialności za zdarzenia.
+                    </td>
+                </tr>
+                <tr>
+                    <td>Ustalenie, dochodzenie lub obrona roszczeń oraz wykonanie obowiązków prawnych</td>
+                    <td>Niezbędne metryki i logi</td>
+                    <td>Art. 6 ust. 1 lit. c lub f RODO, zależnie od okoliczności.</td>
+                </tr>
+                </tbody>
+            </table>
+            </div>
+            <p>
+            Jeżeli podstawą pierwotnego przetwarzania jest zgoda, jej wycofanie nie wpływa na zgodność z prawem
+            przetwarzania dokonanego przed wycofaniem. Jeżeli Administrator opiera się na prawnie uzasadnionym
+            interesie, osoba może wnieść sprzeciw na zasadach opisanych w punkcie 12.
+            </p>
+        </section>
+
+        <section id="zrodla">
+            <h2>6. Skąd pochodzą dane i czy ich podanie jest obowiązkowe</h2>
+            <p>
+            Dane pracownika związane z dostępem pochodzą od niego, z firmowych systemów tożsamości i dostępu
+            oraz z urządzeń i infrastruktury używanych do połączenia. Podanie danych technicznych wymaganych
+            do zestawienia połączenia jest konieczne do skorzystania z Aplikacji.
+            </p>
+            <p>
+            Dane w dokumentach pochodzą z dokumentów pozostających w legalnym posiadaniu Administratora,
+            przekazanych przez klientów, ubezpieczonych, poszkodowanych, kontrahentów, pracowników, ubezpieczycieli,
+            organy publiczne albo inne uprawnione źródła. Pracownik sam decyduje o przesłaniu konkretnego pliku,
+            ale może to być konieczne do wykonania jego obowiązków służbowych. Informację o obowiązku podania
+            danych przez osoby, których dane znajdują się w dokumentach, określa klauzula właściwa dla procesu
+            źródłowego.
+            </p>
+        </section>
+
+        <section id="retencja">
+            <h2>7. Jak długo przechowujemy dane</h2>
+            <ul>
+            <li>
+                <strong>Treść plików, wykryte wartości i pliki wynikowe:</strong> przez czas niezbędny do obsługi
+                bieżącego żądania, wygenerowania podglądu lub pliku wynikowego i przesłania odpowiedzi. Kod Aplikacji
+                nie utrwala ich w trwałym repozytorium. Dane tymczasowe warstwy wykonawczej są usuwane po zakończeniu
+                żądania, wygaśnięciu procesu albo zgodnie z krótkim cyklem czyszczenia środowiska serwerowego.
+            </li>
+            <li>
+                <strong>Dane w przeglądarce:</strong> do usunięcia dokumentu z listy Aplikacji, odświeżenia lub
+                zamknięcia karty albo zakończenia procesu przeglądarki; pobrany plik pozostaje na urządzeniu zgodnie
+                z decyzją użytkownika i firmowymi zasadami retencji dokumentów.
+            </li>
+            <li>
+                <strong>Metryki procesu:</strong> maksymalnie przez 12 miesięcy od zakończenia operacji, a następnie
+                są usuwane albo agregowane w sposób, który nie pozwala na identyfikację osoby. Nazwa pliku jest
+                usuwana nie później niż z upływem tego okresu.
+            </li>
+            <li>
+                <strong>Standardowe logi techniczne i bezpieczeństwa:</strong> co do zasady przez 90 dni. Logi
+                związane z incydentem, nadużyciem, audytem lub roszczeniem mogą być przechowywane dłużej - do
+                zakończenia postępowania i upływu właściwych terminów przedawnienia.
+            </li>
+            </ul>
+            <p>
+            Jeżeli prawo wymaga dłuższego przechowywania określonych danych lub jest ono niezbędne do ustalenia,
+            dochodzenia albo obrony roszczeń, dane mogą być przechowywane przez wymagany okres, wyłącznie w
+            niezbędnym zakresie. Okresy dotyczące dokumentu źródłowego poza Aplikacją wynikają z procesu, w którym
+            dokument jest wykorzystywany, i są opisane w odpowiedniej klauzuli informacyjnej lub polityce retencji STBU.
+            </p>
+        </section>
+
+        <section id="odbiorcy">
+            <h2>8. Komu możemy ujawnić dane</h2>
+            <p>Dostęp do danych mogą otrzymać wyłącznie:</p>
+            <ul>
+            <li>upoważnieni pracownicy i współpracownicy STBU, którym dane są niezbędne do wykonywania obowiązków;</li>
+            <li>administratorzy systemów oraz osoby odpowiedzialne za bezpieczeństwo, utrzymanie i wsparcie Aplikacji;</li>
+            <li>
+                dostawcy infrastruktury, hostingu, kopii bezpieczeństwa, sieci VPN, cyberbezpieczeństwa lub wsparcia IT,
+                jeżeli uczestniczą w utrzymaniu środowiska - na podstawie odpowiednich umów i wyłącznie w zakresie
+                niezbędnym do świadczenia usług;
+            </li>
+            <li>organy publiczne lub inne podmioty, gdy obowiązek ujawnienia wynika z prawa albo jest niezbędny do ochrony roszczeń.</li>
+            </ul>
+            <p>
+            Interfejs Aplikacji korzysta z zasobów przechowywanych lokalnie w środowisku Aplikacji. Nie zawiera
+            aktywnych narzędzi reklamowych, analitycznych ani zewnętrznych skryptów śledzących. Treść dokumentów,
+            nazwy plików oraz wyniki anonimizacji nie są udostępniane dostawcom takich usług.
+            </p>
+        </section>
+
+        <section id="transfery">
+            <h2>9. Przekazywanie danych poza Europejski Obszar Gospodarczy</h2>
+            <p>
+            Administrator nie zamierza przekazywać w związku z działaniem Aplikacji danych osobowych do państw
+            spoza Europejskiego Obszaru Gospodarczego ani organizacji międzynarodowych. W szczególności treść
+            dokumentów i wyniki analizy nie są celowo wysyłane poza środowisko przeznaczone do działania Aplikacji.
+            </p>
+            <p>
+            Jeżeli w przyszłości takie przekazanie stanie się konieczne, nastąpi wyłącznie na podstawie mechanizmu
+            przewidzianego w rozdziale V RODO, w szczególności decyzji Komisji Europejskiej stwierdzającej odpowiedni
+            stopień ochrony albo standardowych klauzul umownych, wraz z oceną warunków przekazania i dodatkowymi
+            środkami, gdy będą potrzebne. Polityka zostanie zaktualizowana przed rozpoczęciem takiego przekazywania,
+            a informację o zabezpieczeniach lub ich kopię będzie można uzyskać od IOD.
+            </p>
+        </section>
+
+        <section id="cookies">
+            <h2>10. Pliki cookie i podobne technologie</h2>
+            <p>
+            Aplikacja nie wykorzystuje własnych plików cookie, narzędzi analitycznych, reklamowych ani technologii
+            śledzących. Nie prowadzi marketingu i nie tworzy profili użytkowników. Dostęp do Aplikacji jest kontrolowany
+            przez firmową infrastrukturę VPN; jej mechanizmy uwierzytelniania i logowania są objęte wewnętrznymi
+            zasadami bezpieczeństwa i odpowiednimi informacjami dotyczącymi systemów pracowniczych.
+            </p>
+        </section>
+
+        <section id="decyzje">
+            <h2>11. Zautomatyzowane podejmowanie decyzji</h2>
+            <p>
+            Dane nie są wykorzystywane do podejmowania wobec osób decyzji opartych wyłącznie na zautomatyzowanym
+            przetwarzaniu, które wywoływałyby skutki prawne lub w podobny sposób istotnie na nie wpływały. Aplikacja
+            nie profiluje osób. Automatyczne wskazanie fragmentu dokumentu jest jedynie wynikiem reguły wykrywania
+            i każdorazowo podlega ocenie pracownika.
+            </p>
+        </section>
+
+        <section id="prawa">
+            <h2>12. Prawa osób, których dane dotyczą</h2>
+            <p>Na zasadach określonych w RODO osoba, której dane dotyczą, może żądać:</p>
+            <ul>
+            <li>dostępu do danych i otrzymania ich kopii;</li>
+            <li>sprostowania nieprawidłowych danych oraz uzupełnienia danych niekompletnych;</li>
+            <li>usunięcia danych;</li>
+            <li>ograniczenia przetwarzania;</li>
+            <li>
+                przeniesienia danych - jeżeli przetwarzanie odbywa się automatycznie na podstawie zgody lub umowy
+                i spełnione są pozostałe warunki RODO;
+            </li>
+            <li>wycofania zgody w dowolnym momencie - jeżeli przetwarzanie jest oparte na zgodzie;</li>
+            <li>
+                wniesienia sprzeciwu z przyczyn związanych ze szczególną sytuacją - jeżeli podstawą jest prawnie
+                uzasadniony interes Administratora.
+            </li>
+            </ul>
+            <p>
+            Prawa te nie mają charakteru bezwzględnego. Administrator może odmówić realizacji żądania w zakresie,
+            w jakim pozwalają na to przepisy, w szczególności gdy dalsze przetwarzanie jest niezbędne do wykonania
+            obowiązku prawnego albo ustalenia, dochodzenia lub obrony roszczeń. O powodach ograniczenia Administrator
+            poinformuje osobę zgodnie z prawem.
+            </p>
+            <p>
+            Żądania można kierować do IOD na adres <a href="mailto:iod@stbu.pl">iod@stbu.pl</a>. W celu ochrony danych
+            Administrator może poprosić o informacje niezbędne do potwierdzenia tożsamości osoby składającej żądanie.
+            </p>
+            <p>
+            Osoba ma również prawo wnieść skargę do Prezesa Urzędu Ochrony Danych Osobowych, ul. Stanisława Moniuszki 1A,
+            00-014 Warszawa. Aktualne informacje o sposobie złożenia skargi są dostępne na stronie
+            <a href="https://uodo.gov.pl/" rel="noopener noreferrer">uodo.gov.pl</a>.
+            </p>
+        </section>
+
+        <section id="bezpieczenstwo">
+            <h2>13. Bezpieczeństwo danych</h2>
+            <p>
+            Administrator stosuje środki techniczne i organizacyjne dobierane odpowiednio do ryzyka, w tym w szczególności:
+            </p>
+            <ul>
+            <li>dostęp wyłącznie dla upoważnionych pracowników przez firmową sieć VPN;</li>
+            <li>szyfrowanie transmisji, kontrolę dostępu i ograniczenie dostępu administracyjnego;</li>
+            <li>przetwarzanie treści dokumentów bez celowego zapisu w trwałej bazie Aplikacji;</li>
+            <li>ograniczenia typu, wielkości i liczby plików oraz ochronę przed niebezpiecznymi strukturami ZIP i XML;</li>
+            <li>usuwanie standardowych metadanych z plików wynikowych;</li>
+            <li>rejestrowanie zdarzeń niezbędnych do diagnostyki i bezpieczeństwa oraz okresowe przeglądy uprawnień;</li>
+            <li>zobowiązanie osób upoważnionych do zachowania poufności i stosowania wewnętrznych procedur ochrony informacji.</li>
+            </ul>
+        </section>
+
+        <section id="odpowiedzialnosc">
+            <h2>14. Zasady bezpiecznego korzystania z Aplikacji</h2>
+            <div class="notice">
+            <strong>Ważne:</strong> regułowa analiza może nie wykryć wszystkich danych albo może oznaczyć treści,
+            które nie są danymi osobowymi. Przed wykorzystaniem lub udostępnieniem pliku wynikowego pracownik ma
+            obowiązek zweryfikować listę wykryć oraz cały dokument. Samo wygenerowanie pliku przez Aplikację nie
+            gwarantuje, że dokument został skutecznie i nieodwracalnie zanonimizowany w każdym kontekście.
+            </div>
+            <p>Użytkownik powinien ponadto:</p>
+            <ul>
+            <li>przesyłać wyłącznie dokumenty potrzebne do wykonywania obowiązków służbowych;</li>
+            <li>nie używać Aplikacji do celu niezgodnego z celem zebrania danych;</li>
+            <li>nie udostępniać dostępu do Aplikacji, podglądu ani plików osobom nieupoważnionym;</li>
+            <li>zapisywać pliki wynikowe wyłącznie w zatwierdzonych lokalizacjach firmowych;</li>
+            <li>niezwłocznie zgłaszać podejrzenie naruszenia ochrony danych zgodnie z procedurą obowiązującą w STBU.</li>
+            </ul>
+        </section>
+
+        <section id="zmiany">
+            <h2>15. Zmiany polityki</h2>
+            <p>
+            Polityka jest przeglądana po zmianach sposobu działania Aplikacji, kategorii danych, odbiorców,
+            infrastruktury, okresów retencji lub przepisów, a także okresowo w ramach zarządzania ochroną danych.
+            Nowa wersja otrzymuje numer i datę obowiązywania oraz jest udostępniana użytkownikom Aplikacji przed
+            wejściem w życie, jeżeli zmiana może mieć znaczenie dla ich praw lub sposobu przetwarzania danych.
+            </p>
+        </section>
+        </div>
+
+        <footer>
+        <p>
+            Dokument opracowano z uwzględnieniem rozporządzenia Parlamentu Europejskiego i Rady (UE) 2016/679,
+            w szczególności zasad z art. 5, obowiązków informacyjnych z art. 12–14, ochrony danych w fazie
+            projektowania z art. 25 oraz bezpieczeństwa przetwarzania z art. 32.
+        </p>
+        <p>
+            Podstawa prawna:
+            <a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj" rel="noopener noreferrer">RODO w EUR-Lex</a>.
+            Informacje organu nadzorczego:
+            <a href="https://uodo.gov.pl/" rel="noopener noreferrer">Urząd Ochrony Danych Osobowych</a>.
+        </p>
+        </footer>
+
+    </div>
+</body>
+</html>

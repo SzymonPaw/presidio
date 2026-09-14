@@ -48,6 +48,16 @@
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><path d="M320 32C143 32 0 175 0 352c0 123.5 64.3 231.9 160 292.5V480c0-17.7 14.3-32 32-32h96c17.7 0 32 14.3 32 32v164.5c95.7-60.6 160-169 160-292.5C640 175 497 32 320 32zm0 448c-88.4 0-160-71.6-160-160s71.6-160 160-160s160 71.6 160 160s-71.6 160-160 160zm0-272c-17.7 0-32-14.3-32-32V144c0-17.7 14.3-32 32-32s32 14.3 32 32v32c0 17.7-14.3 32-32 32z"/></svg>
     </button>
     --->
+    <div id="privacy-banner" class="privacy-banner" role="dialog" aria-live="polite" aria-label="Informacja o polityce prywatności">
+        <div class="privacy-banner__content">
+            <span>
+                Ta strona zapisuje wyłącznie zgodę na politykę prywatności w pliku cookie, aby zapewnić zgodność z RODO.
+                <a href="/polityka-prywatnosci/">Przeczytaj politykę prywatności</a>.
+            </span>
+            <button type="button" id="privacy-accept-btn" class="btn btn-primary btn-sm">Akceptuj</button>
+        </div>
+    </div>
+
     <div class="container">
 
         <div class="header--logo">
@@ -266,6 +276,46 @@
             </div>
         </div>
     </div>
+
+    <script>
+        (function () {
+            var banner = document.getElementById('privacy-banner');
+            var acceptBtn = document.getElementById('privacy-accept-btn');
+            if (!banner || !acceptBtn) {
+                return;
+            }
+
+            var cookieName = 'privacy_policy_accepted';
+            var cookieValue = '1';
+            var cookieMaxAge = 315360000;
+
+            function hasConsentCookie() {
+                var cookies = document.cookie ? document.cookie.split('; ') : [];
+                for (var i = 0; i < cookies.length; i += 1) {
+                    var parts = cookies[i].split('=');
+                    if (parts[0] === cookieName) {
+                        return parts.slice(1).join('=') === cookieValue;
+                    }
+                }
+                return false;
+            }
+
+            function setConsentCookie() {
+                var cookie = cookieName + '=' + cookieValue + '; path=/; max-age=' + cookieMaxAge + '; SameSite=Lax';
+                if (window.location.protocol === 'https:') {
+                    cookie += '; Secure';
+                }
+                document.cookie = cookie;
+                banner.style.display = 'none';
+            }
+
+            if (hasConsentCookie()) {
+                banner.style.display = 'none';
+            }
+
+            acceptBtn.addEventListener('click', setConsentCookie);
+        })();
+    </script>
 
     <script src="{{ url_for('static', filename='vendor/docx-preview/jszip.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/docx-preview/docx-preview.js') }}"></script>

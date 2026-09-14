@@ -30,6 +30,38 @@ body.pdf-preview-open {
     overflow: hidden;
 }
 
+.privacy-banner {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: rgba(255, 255, 255, 0.96);
+    border-bottom: 1px solid rgba(0, 31, 95, 0.12);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+.privacy-banner__content {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    font-size: 0.9rem;
+    color: var(--color-text);
+}
+
+.privacy-banner__content a {
+    color: var(--color-navy);
+    font-weight: 600;
+    text-decoration: underline;
+}
+
+.privacy-banner .btn-sm {
+    padding: 0.45rem 1rem;
+    font-size: 0.9rem;
+}
+
 .container {
     max-width: 1280px;
     margin: 2rem auto;
