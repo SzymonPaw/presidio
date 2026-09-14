@@ -2503,7 +2503,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         }
 
         if ((pdfPreviewState.previewMode || 'detections') === 'output') {
-            return await getAnonymizedPreviewBlob();
+            // Output preview is rendered from the original text. The marker
+            // overlay is what makes each active finding look anonymized and
+            // allows the sidebar switch to reveal the original text again.
+            return await getCleanPdfPreviewBlob();
         }
 
         return await getCleanPdfPreviewBlob();
