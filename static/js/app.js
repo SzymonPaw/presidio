@@ -526,8 +526,23 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                             document.status = 'Gotowy';
                         })
                         .catch(function (error) {
+                            var errorMessage = error && error.message
+                                ? error.message
+                                : '';
 
-                            document.status = 'Błąd analizy';
+                            var pdfLimitExceeded =
+                                errorMessage.indexOf(
+                                    'PDF zawiera zbyt wiele stron'
+                                ) !== -1
+                                ||
+                                errorMessage.indexOf(
+                                    'PDF zawiera zbyt dużo tekstu'
+                                ) !== -1;
+
+                            document.status = pdfLimitExceeded
+                                ? 'Błąd - zbyt długi dokument'
+                                : 'Błąd analizy';
+
                             console.error(error);
                         });
                 });

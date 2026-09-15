@@ -4,6 +4,10 @@ from typing import List, Dict, Any
 
 from src.anonymization.rule_engine import DeterministicAnalyzer
 from src.anonymization.marker_registry import MarkerRegistry
+from src.settings import (
+    MAX_PDF_PAGES,
+    MAX_PDF_TEXT_CHARACTERS,
+)
 
 
 class AnonymizationService:
@@ -100,34 +104,79 @@ class AnonymizationService:
     # ------------------------------------------------------------------
 
     def analyze_pdf(self, pdf_bytes: bytes) -> List[Dict[str, Any]]:
-        """Analizuje PDF strona po stronie."""
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        """Analizuje PDF strona po stronie z limitami bezpieczeństwa."""
+        doc = fitz.open(
+            stream=pdf_bytes,
+            filetype="pdf",
+        )
+
         all_findings: List[Dict[str, Any]] = []
+        total_text_characters = 0
 
         try:
+            if doc.page_count > MAX_PDF_PAGES:
+                raise ValueError(
+                    "PDF zawiera zbyt wiele stron. "
+                    f"Dozwolone: {MAX_PDF_PAGES}, "
+                    f"otrzymano: {doc.page_count}."
+                )
+
             for page_num, page in enumerate(doc):
                 text = self._extract_pdf_body_text(page)
+
+                total_text_characters += len(text)
+
+                if total_text_characters > MAX_PDF_TEXT_CHARACTERS:
+                    raise ValueError(
+                        "PDF zawiera zbyt dużo tekstu do bezpiecznej analizy. "
+                        f"Dozwolone: {MAX_PDF_TEXT_CHARACTERS} znaków."
+                    )
+
                 results = self.analyzer.analyze(text)
                 hits_by_value: Dict[str, List[Any]] = {}
                 grouped_indexes: Dict[str, int] = {}
 
-                for r in results:
-                    raw_value = text[r.start : r.end]
+                for result in results:
+                    raw_value = text[result.start:result.end]
+
                     if not raw_value:
                         continue
 
                     if raw_value not in hits_by_value:
-                        hits_by_value[raw_value] = page.search_for(raw_value)
+                        hits_by_value[raw_value] = page.search_for(
+                            raw_value
+                        )
 
-                    occurrence_index = grouped_indexes.get(raw_value, 0)
-                    grouped_indexes[raw_value] = occurrence_index + 1
+                    occurrence_index = grouped_indexes.get(
+                        raw_value,
+                        0,
+                    )
 
-                    hit_list = hits_by_value.get(raw_value, [])
-                    bbox = tuple(hit_list[occurrence_index]) if occurrence_index < len(hit_list) else None
+                    grouped_indexes[raw_value] = (
+                        occurrence_index + 1
+                    )
+
+                    hit_list = hits_by_value.get(
+                        raw_value,
+                        [],
+                    )
+
+                    bbox = (
+                        tuple(hit_list[occurrence_index])
+                        if occurrence_index < len(hit_list)
+                        else None
+                    )
 
                     all_findings.append(
-                        self._make_finding(r.entity_type, raw_value, r.score, page_num, bbox)
+                        self._make_finding(
+                            result.entity_type,
+                            raw_value,
+                            result.score,
+                            page_num,
+                            bbox,
+                        )
                     )
+
         finally:
             doc.close()
 
