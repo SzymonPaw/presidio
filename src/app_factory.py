@@ -15,6 +15,7 @@ from src.settings import (
     DATABASE_URL,
     FLASK_DEBUG,
     MAX_CONTENT_LENGTH,
+    MAX_FILES_PER_BATCH,
     SECRET_KEY,
     ADMIN_DASHBOARD_TOKEN,
 )
@@ -667,8 +668,17 @@ def _register_routes(app: Flask) -> None:
     def anonymize_all():
         """Anonimizuje wszystkie pliki i zwraca je w jednym archiwum ZIP."""
         files = request.files.getlist("files")
+
         if not files:
             return jsonify({"error": "Brak plikow"}), 400
+
+        if len(files) > MAX_FILES_PER_BATCH:
+            return jsonify({
+                "error": (
+                    "Przekroczono maksymalna liczbe plikow. "
+                    f"Dozwolone: {MAX_FILES_PER_BATCH}."
+                )
+            }), 413
 
         try:
             settings_raw = request.form.get("settings", "[]")
