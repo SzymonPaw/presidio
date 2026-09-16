@@ -3,7 +3,7 @@ services:
     build: .
     container_name: flask_presidio_app
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     env_file:
       - .env
     restart: unless-stopped
