@@ -1,10 +1,12 @@
 """Fabryka aplikacji Flask z walidacja slownikow przy starcie."""
+import secrets
 import sys
 import subprocess
 from datetime import datetime
 from pathlib import Path
 
 from flask import Flask, request
+from werkzeug.security import check_password_hash
 
 from src.settings import (
     REQUIRED_GENERATED_DICTS,
@@ -17,7 +19,9 @@ from src.settings import (
     MAX_CONTENT_LENGTH,
     MAX_FILES_PER_BATCH,
     SECRET_KEY,
-    ADMIN_DASHBOARD_TOKEN,
+    ADMIN_USERNAME,
+    ADMIN_PASSWORD_HASH,
+    IS_PRODUCTION,
 )
 
 
@@ -140,7 +144,13 @@ def create_app() -> Flask:
     app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
     app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-    app.config["ADMIN_DASHBOARD_TOKEN"] = ADMIN_DASHBOARD_TOKEN
+
+    app.config["ADMIN_USERNAME"] = ADMIN_USERNAME
+    app.config["ADMIN_PASSWORD_HASH"] = ADMIN_PASSWORD_HASH
+
+    app.config["SESSION_COOKIE_SECURE"] = IS_PRODUCTION
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_COOKIE_SAMESITE"] = "Strict"
 
 
     @app.after_request
@@ -199,7 +209,7 @@ def _register_routes(app: Flask) -> None:
     import json
     import io
     import zipfile
-    from flask import render_template, send_file, request, jsonify
+    from flask import Response, render_template, send_file, request, jsonify
 
     from src.documents.pdf_adapter import PdfAdapter
     from src.documents.docx_adapter import DocxAdapter
@@ -232,8 +242,46 @@ def _register_routes(app: Flask) -> None:
     def health():
         return _health_payload()
 
-    @app.route(f"/admin/{ADMIN_DASHBOARD_TOKEN}")
+    def _admin_authorized() -> bool:
+        """Weryfikuje dane HTTP Basic Auth dla panelu administratora."""
+        auth = request.authorization
+
+        if auth is None or auth.type.lower() != "basic":
+            return False
+
+        expected_username = str(app.config["ADMIN_USERNAME"] or "")
+        password_hash = str(app.config["ADMIN_PASSWORD_HASH"] or "")
+
+        username_ok = secrets.compare_digest(
+            auth.username or "",
+            expected_username,
+        )
+
+        password_ok = bool(password_hash) and check_password_hash(
+            password_hash,
+            auth.password or "",
+        )
+
+        return username_ok and password_ok
+
+    def _admin_auth_required() -> Response:
+        response = Response(
+            "Wymagane uwierzytelnienie administratora.",
+            status=401,
+            mimetype="text/plain",
+        )
+
+        response.headers["WWW-Authenticate"] = (
+            'Basic realm="Presidio Admin", charset="UTF-8"'
+        )
+
+        return response
+
+    @app.route("/adminstbu")
     def admin_dashboard():
+        if not _admin_authorized():
+            return _admin_auth_required()
+
         return render_template(
             "admin_dashboard.html",
             summary=metrics_store.summary(),

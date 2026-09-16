@@ -1,6 +1,5 @@
 """Ustawienia aplikacji odczytywane ze zmiennych srodowiskowych."""
 import os
-import hashlib
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -24,6 +23,23 @@ def _get_env(key: str, default: str | None = None) -> str | None:
     return os.getenv(key, default)
 
 
+def _required_env(key: str) -> str:
+    """Pobiera wymagana zmienna produkcyjna lub przerywa start aplikacji."""
+    value = os.getenv(key, "").strip()
+    if not value:
+        raise RuntimeError(
+            f"Brak wymaganej zmiennej srodowiskowej: {key}"
+        )
+    return value
+
+
+APP_ENV = (_get_env("APP_ENV", "development") or "development").lower()
+if APP_ENV not in {"development", "testing", "production"}:
+    raise RuntimeError(
+        "APP_ENV musi miec jedna z wartosci: development, testing, production."
+    )
+
+IS_PRODUCTION = APP_ENV == "production"
 FLASK_DEBUG = _get_env("FLASK_DEBUG", "0") == "1"
 FLASK_PORT = int(_get_env("PORT", "5000"))
 FLASK_HOST = _get_env("HOST", "127.0.0.1")
@@ -75,11 +91,28 @@ ZIP_MAX_RATIO = 50  # Max 50x kompresji
 # ---------------------------------------------------------------------------
 # Inne ustawienia
 # ---------------------------------------------------------------------------
-SECRET_KEY = _get_env("SECRET_KEY", "dev-secret-change-in-production")
-ADMIN_DASHBOARD_TOKEN = _get_env(
-    "ADMIN_DASHBOARD_TOKEN",
-    "admin-" + hashlib.sha256(SECRET_KEY.encode("utf-8")).hexdigest()[:24],
-)
+if IS_PRODUCTION:
+    SECRET_KEY = _required_env("SECRET_KEY")
+    ADMIN_USERNAME = _required_env("ADMIN_USERNAME")
+    ADMIN_PASSWORD_HASH = _required_env("ADMIN_PASSWORD_HASH")
+
+    if len(SECRET_KEY) < 64:
+        raise RuntimeError(
+            "SECRET_KEY w produkcji musi miec co najmniej 64 znaki."
+        )
+
+    if not ADMIN_PASSWORD_HASH.startswith(("scrypt:", "pbkdf2:")):
+        raise RuntimeError(
+            "ADMIN_PASSWORD_HASH musi byc hashem wygenerowanym przez "
+            "werkzeug.security.generate_password_hash()."
+        )
+else:
+    SECRET_KEY = _get_env(
+        "SECRET_KEY",
+        "development-only-secret-key",
+    )
+    ADMIN_USERNAME = _get_env("ADMIN_USERNAME", "admin")
+    ADMIN_PASSWORD_HASH = _get_env("ADMIN_PASSWORD_HASH", "")
 
 
 def ensure_directories() -> None:
