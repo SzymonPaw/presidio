@@ -1,0 +1,20 @@
+[Unit]
+Description=Gunicor for bezsladu (Flask/Presidio)
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/bezsladu
+
+Environment="PATH=/opt/bezsladu/venv/bin"
+EnvironmentFile=-/opt/bezsladu/.env
+
+ExecStart=/opt/bezsladu/venv/bin/gunicorn \
+    --workers 3 \
+    --bind unix:/opt/bezsladu/bezsladu.sock \
+    --timeout 120 \
+    wsgi:app
+
+[Install]
+WantedBy=multi-user.target

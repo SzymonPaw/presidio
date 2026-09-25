@@ -1,8 +1,20 @@
 #!/usr/bin/env bash
+set -euo pipefail
+
 cd "$(dirname "$0")/.."
 
+PYTHON_BIN="${PYTHON_BIN:-}"
+if [ -z "$PYTHON_BIN" ]; then
+	if command -v python3.14 >/dev/null 2>&1; then
+		PYTHON_BIN="python3.14"
+	else
+		PYTHON_BIN="python3"
+	fi
+fi
+
+echo "Uzywany interpreter: $($PYTHON_BIN --version)"
 echo "Tworzenie srodowiska wirtualnego..."
-python3 -m venv .venv
+"$PYTHON_BIN" -m venv .venv
 
 echo "Aktualizacja pip..."
 .venv/bin/python -m pip install --upgrade pip

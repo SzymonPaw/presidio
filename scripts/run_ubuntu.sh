@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-set -a
-source .env
-set +a
+if [ -f .env ]; then
+    set -a
+    source .env
+    set +a
+fi
 
 exec .venv/bin/gunicorn \
     --bind 127.0.0.1:5000 \
