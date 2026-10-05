@@ -807,9 +807,66 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         }
 
         if (isSelectedFileDocx() || isSelectedFileXlsx()) {
+            renderFindings(currentFindings);
             refreshDocxPreviewState();
             refreshXlsxManualHighlights();
         }
+    }
+
+    async function showManualFindingFromMainTable(manualId) {
+        if (!manualId) {
+            return;
+        }
+
+        var manualFinding = getCurrentManualFindings().find(function (entry) {
+            return String(entry.id) === String(manualId);
+        });
+
+        if (!manualFinding) {
+            return;
+        }
+
+        if (isSelectedFilePdf()) {
+            if (!modalIsOpen) {
+                await openPdfPreview(null);
+            }
+
+            var manualPage = Number(manualFinding.pdf_page);
+            if (Number.isInteger(manualPage) && manualPage >= 0) {
+                pdfPreviewState.viewer.scrollPageIntoView({
+                    pageNumber: manualPage + 1
+                });
+                await waitForPdfPageRendered(manualPage + 1);
+            }
+
+            focusManualPdfFinding(manualFinding.id);
+            return;
+        }
+
+        openDocxPreview(null, manualFinding.id);
+    }
+
+    function bindMainManualFindingsActions() {
+        if (!findingsDiv || findingsDiv.dataset.mainManualActionsBound === 'true') {
+            return;
+        }
+
+        findingsDiv.dataset.mainManualActionsBound = 'true';
+
+        findingsDiv.addEventListener('click', function (event) {
+            var showButton = event.target && event.target.closest ? event.target.closest('.manual-show-main') : null;
+            if (showButton && findingsDiv.contains(showButton)) {
+                event.preventDefault();
+                showManualFindingFromMainTable(showButton.getAttribute('data-manual-id'));
+                return;
+            }
+
+            var removeButton = event.target && event.target.closest ? event.target.closest('.manual-remove-main') : null;
+            if (removeButton && findingsDiv.contains(removeButton)) {
+                event.preventDefault();
+                removeManualFindingById(removeButton.getAttribute('data-manual-id'));
+            }
+        });
     }
 
     function resolveXlsxSelectionStateFromRange(range) {
@@ -1229,45 +1286,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
             }
         );
 
-        // Event listener dla Zatwierdź
-        var manualMainShowButtons = findingsDiv.querySelectorAll('.manual-show-main');
-        manualMainShowButtons.forEach(function (button) {
-            button.addEventListener('click', async function () {
-                var manualId = button.getAttribute('data-manual-id');
-                var manualFinding = getCurrentManualFindings().find(function (entry) {
-                    return String(entry.id) === String(manualId);
-                });
-
-                if (!manualFinding) {
-                    return;
-                }
-
-                if (isSelectedFilePdf()) {
-                    if (!modalIsOpen) {
-                        await openPdfPreview(null);
-                    }
-
-                    var manualPage = Number(manualFinding.pdf_page);
-                    if (Number.isInteger(manualPage) && manualPage >= 0) {
-                        pdfPreviewState.viewer.scrollPageIntoView({
-                            pageNumber: manualPage + 1
-                        });
-                        await waitForPdfPageRendered(manualPage + 1);
-                    }
-
-                    focusManualPdfFinding(manualFinding.id);
-                    return;
-                }
-                openDocxPreview(null, manualFinding.id);
-            });
-        });
-
-        var manualMainRemoveButtons = findingsDiv.querySelectorAll('.manual-remove-main');
-        manualMainRemoveButtons.forEach(function (button) {
-            button.addEventListener('click', function () {
-                removeManualFindingById(button.getAttribute('data-manual-id'));
-            });
-        });
+        bindMainManualFindingsActions();
 
         var confirmBtn = document.getElementById('confirm-btn');
 
