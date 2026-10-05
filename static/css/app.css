@@ -78,6 +78,32 @@ body.pdf-preview-open {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
+.footer ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    font-size: 18px;
+}
+
+.footer ul a {
+    color: var(--color-navy);
+    text-decoration: none;
+    transition: all .25s ease 0s;
+}
+
+.footer ul a:hover {
+    transition: all .25s ease 0s;
+    color: #4776d7;
+}
+
+.footer ul a::before {
+    content: "🔗";
+    margin-right: 0.5rem;
+    color: var(--color-navy);
+}
+
 h1 {
     font-size: 1.8rem;
     margin-top: 0;
