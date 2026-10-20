@@ -224,6 +224,16 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         });
     }
 
+    function isSupportedFileType(file) {
+        var fileName = String(file && file.name ? file.name : '');
+        var extension = fileName.split('.').pop();
+        return ['pdf', 'docx', 'xlsx'].indexOf((extension || '').toLowerCase()) !== -1;
+    }
+
+    function getDefaultDocumentStatus(file) {
+        return isSupportedFileType(file) ? 'Oczekuje na analizę' : 'Format nieobsługiwany';
+    }
+
     function handleFiles(fileList) {
         var files = Array.prototype.slice.call(fileList);
         var totalSelected = documents.length + files.length;
@@ -263,7 +273,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
                 findings: [],
                 manualFindings: [],
                 analyzed: false,
-                status: 'Oczekuje na analizę'
+                status: getDefaultDocumentStatus(file)
             });
         });
 
@@ -291,8 +301,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
         currentFindings = documents[index].findings;
         resetPdfPreview();
 
-        findingsDiv.innerHTML = documents[index].analyzed ? '' :
-            '<p>Dokument oczekuje na analizę.</p>';
+        if (documents[index].status === 'Format nieobsługiwany') {
+            findingsDiv.innerHTML = '<p>Format nieobsługiwany.</p>';
+        } else {
+            findingsDiv.innerHTML = documents[index].analyzed ? '' :
+                '<p>Dokument oczekuje na analizę.</p>';
+        }
 
         if (documents[index].analyzed) {
             renderFindings(currentFindings);
@@ -526,6 +540,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
             documents.reduce(function (promise, document, index) {
                 return promise.then(function () {
+                    if (!isSupportedFileType(document.file)) {
+                        document.status = 'Format nieobsługiwany';
+                        document.analyzed = false;
+                        renderDocumentList();
+                        return Promise.resolve();
+                    }
+
                     document.status = 'Analizowanie...';
                     renderDocumentList();
                     var formData = new FormData();
@@ -555,7 +576,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
                             document.status = pdfLimitExceeded
                                 ? 'Błąd - zbyt długi dokument'
-                                : 'Błąd analizy';
+                                : 'Format nieobsługiwany';
 
                             console.error(error);
                         });
