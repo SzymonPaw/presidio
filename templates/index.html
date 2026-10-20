@@ -25,29 +25,24 @@
         type="image/x-icon"
     >
 
-    <!---  sweetalert
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         function showInfo() {
             Swal.fire({
                 position: 'top-end',
-                icon: 'success',
-                title: 'Motyw zmieniony',
-                text: 'Motyw został zmieniony na ciemny.',
+                icon: 'error',
+                title: 'Dodano zbyt wiele plików',
+                text: 'Możesz dodać maksymalnie 8 plików.',
                 showConfirmButton: false,
                 timer: 10000
             })
         };
     </script>
-    --->
+    
 </head>
 
 <body>
-    <!--- sweetalert 
-    <button id="info-button" class="info-button" title="Informacje o narzędziu" onclick="showInfo()">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><path d="M320 32C143 32 0 175 0 352c0 123.5 64.3 231.9 160 292.5V480c0-17.7 14.3-32 32-32h96c17.7 0 32 14.3 32 32v164.5c95.7-60.6 160-169 160-292.5C640 175 497 32 320 32zm0 448c-88.4 0-160-71.6-160-160s71.6-160 160-160s160 71.6 160 160s-71.6 160-160 160zm0-272c-17.7 0-32-14.3-32-32V144c0-17.7 14.3-32 32-32s32 14.3 32 32v32c0 17.7-14.3 32-32 32z"/></svg>
-    </button>
-    --->
+    
     <div id="privacy-banner" class="privacy-banner" role="dialog" aria-live="polite" aria-label="Informacja o polityce prywatności">
         <div class="privacy-banner__content">
             <span>
@@ -67,10 +62,12 @@
 
         <h1>Anonimizator dokumentów | STBU</h1>
 
-        <h2>
+        <h2>Pamietaj, aplikacja jest przygotowana pod polskie dokumenty!</h2>
+
+        <h3>
             Po zakończeniu procesu usuwania wrażliwych danych,
             sprawdź efekt działania narzędzia!
-        </h2>
+        </h3>
 
         <p class="subtitle">
             Narzędzie do szybkiej anonimizacji dokumentów przed ich dalszym wykorzystaniem lub udostępnieniem. Automatycznie rozpoznaje i ukrywa dane osobowe, adresy, numery identyfikacyjne oraz informacje kontaktowe. Pozwala bezpiecznie pracować z dokumentami i ogranicza ryzyko przypadkowego ujawnienia poufnych informacji.
@@ -123,9 +120,9 @@
         <div id="footer" class="footer">
             <ul>
                 <li>
-                    <a href="https://stbubu.sharepoint.com/sites/Busola" target="_blank" rel="noopener noreferrer">Busola</a>
+                    <a href="https://bezsladu.stbu.pl/static/pdf/instrukcja.pdf" target="_blank">Instrukcja</a>
                 </li>
-                <li>
+		<li>
                     <a href="/polityka-prywatnosci/">Polityka prywatności</a>
                 </li>
             </ul>
