@@ -75,7 +75,7 @@ REQUIRED_SOURCE_FILES = [
 # ---------------------------------------------------------------------------
 # Konfiguracja uploadu oraz limitów bezpieczeństwa ZIP/XML
 # ---------------------------------------------------------------------------
-MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50 MB
+MAX_CONTENT_LENGTH = 24 * 1024 * 1024  # 24 MiB per multipart request
 MAX_FILES_PER_BATCH = 8
 
 # Limity bezpieczeństwa PDF

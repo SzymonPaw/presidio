@@ -304,6 +304,17 @@ def _register_routes(app: Flask) -> None:
         return jsonify({"ok": True})
 
     def _get_findings_for_file(file_bytes: bytes, filename: str) -> list[dict]:
+        # Per-document markers; no raw-value lookup retained between requests.
+        registry = anonymizer_service.marker_registry
+        registry.registry.clear()
+        registry.counters.clear()
+        try:
+            return _get_findings_for_file_impl(file_bytes, filename)
+        finally:
+            registry.registry.clear()
+            registry.counters.clear()
+
+    def _get_findings_for_file_impl(file_bytes: bytes, filename: str) -> list[dict]:
         """Ekstrahuje findings z pliku i grupuje je."""
         file_ext = filename.lower()
         if file_ext.endswith(".pdf"):

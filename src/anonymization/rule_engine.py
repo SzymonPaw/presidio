@@ -1651,7 +1651,7 @@ class DeterministicAnalyzer:
         self.analyzer = AnalyzerEngine(
             nlp_engine=nlp_engine,
             registry=self.registry,
-            supported_languages=["pl"],
+            supported_languages=self.registry.supported_languages,
         )
         self.allowlist = _load_allowlist()
         self.pkd_exclusions = _load_pkd_exclusions()
